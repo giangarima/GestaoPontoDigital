@@ -8,6 +8,8 @@
  */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
+import { createRegistroComNsr } from '@/lib/server/registro';
+import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../_lib/auth-helpers';
 
@@ -54,18 +56,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		return jsonError('Colaborador não encontrado', 404);
 	}
 
-	const registro = await prisma.registro.create({
-		data: {
-			colaboradorId: colaborador.id,
-			empresaId: admin.empresaId,
-			tipo: body.type,
-			marcadoEm: ts,
-			metodo: 'manual',
-			criadoPor: admin.id,
-			criadoMotivo: body.reason.trim()
-		},
-		include: { anulacao: true }
+	const registro = await createRegistroComNsr({
+		colaboradorId: colaborador.id,
+		empresaId: admin.empresaId,
+		tipo: body.type,
+		metodo: 'manual',
+		marcadoEm: ts,
+		criadoPor: admin.id,
+		criadoMotivo: body.reason.trim()
 	});
+
+	void emitirComprovante(registro.id);
 
 	return jsonOk(toRegistroDTO(registro), 201);
 };

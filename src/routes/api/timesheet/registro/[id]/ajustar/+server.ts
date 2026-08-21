@@ -10,6 +10,8 @@
  */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
+import { createRegistroComNsr } from '@/lib/server/registro';
+import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../../_lib/auth-helpers';
 
@@ -63,8 +65,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	const motivo = body.reason.trim();
 
 	const corrigido = await prisma.$transaction(async (tx) => {
-		const novo = await tx.registro.create({
-			data: {
+		const novo = await createRegistroComNsr(
+			{
 				colaboradorId: registro.colaboradorId,
 				empresaId: admin.empresaId,
 				tipo,
@@ -72,8 +74,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				metodo: 'manual',
 				criadoPor: admin.id,
 				criadoMotivo: motivo
-			}
-		});
+			},
+			tx
+		);
 
 		await tx.registroAnulacao.create({
 			data: {
@@ -85,11 +88,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			}
 		});
 
-		return tx.registro.findUnique({
-			where: { id: novo.id },
-			include: { anulacao: true }
-		});
+		return tx.registro.findUnique({ where: { id: novo.id }, include: { anulacao: true } });
 	});
+
+	// Dispara emissão do comprovante para a nova batida
+	void emitirComprovante(corrigido!.id);
 
 	return jsonOk(toRegistroDTO(corrigido!), 201);
 };

@@ -14,6 +14,7 @@
  */
 
 import type { Registro, RegistroAnulacao } from '@/lib/server/prisma-client/client';
+import { formatNsr } from '@/lib/server/nsr';
 
 export interface AnulacaoDTO {
 	motivo: string;
@@ -31,6 +32,7 @@ export interface RegistroDTO {
 	method: string;
 	createdBy: string | null;
 	createdReason: string | null;
+	nsr?: string;
 	anulacao: AnulacaoDTO | null;
 }
 
@@ -54,6 +56,7 @@ export function toRegistroDTO(p: RegistroComAnulacao): RegistroDTO {
 		method: p.metodo,
 		createdBy: p.criadoPor ?? null,
 		createdReason: p.criadoMotivo ?? null,
+		nsr: p.nsr ? formatNsr(p.nsr) : undefined,
 		anulacao: p.anulacao
 			? {
 					motivo: p.anulacao.motivo,
