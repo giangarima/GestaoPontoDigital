@@ -47,6 +47,10 @@ prisma/*.db-journal
 # ─── Prisma (cliente gerado) ───────────────────
 src/lib/server/prisma-client/
 
+# Comprovantes e certificados locais
+storage/
+certs/
+
 # ─── Misc ──────────────────────────────────────
 *.tsbuildinfo
 .vercel/

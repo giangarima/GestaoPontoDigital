@@ -17,7 +17,8 @@
 		"db:migrate": "prisma migrate dev",
 		"db:seed": "tsx prisma/seed.ts",
 		"db:studio": "prisma studio",
-		"db:reset": "prisma migrate reset --force && tsx prisma/seed.ts"
+		"db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
+		"generate:cert": "node scripts/generate-dev-cert.mjs"
 	},
 	"lint-staged": {
 		"*.{js,ts,svelte}": [
@@ -56,8 +57,14 @@
 		"@prisma/adapter-pg": "^7.8.0",
 		"@prisma/client": "^7.8.0",
 		"bcryptjs": "^3.0.3",
+		"@signpdf/placeholder-pdf-lib": "^3.3.0",
 		"jsonwebtoken": "^9.0.3",
 		"nodemailer": "^9.0.3",
+		"@signpdf/signpdf": "^3.0.0",
+		"@signpdf/signer-p12": "^3.0.0",
+		"pdf-lib": "^1.17.1",
+		"node-forge": "^1.3.1",
+		"puppeteer": "^24.0.0",
 		"pg": "^8.21.0",
 		"prisma": "^7.8.0",
 		"zod": "^4.4.3"
