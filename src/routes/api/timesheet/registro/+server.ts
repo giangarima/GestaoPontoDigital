@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { criarRegistro } from '@/lib/server/registro-ledger';
+import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireUser, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
@@ -14,7 +15,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		return response as Response;
 	}
 
-	// Só quem tem vínculo de colaborador bate ponto (o token carrega o colaboradorId).
 	if (!user.colaboradorId) {
 		return jsonError('Usuário sem vínculo de colaborador não registra ponto', 403);
 	}
@@ -38,6 +38,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			metodo: 'manual'
 		})
 	);
+
+	void emitirComprovante(registro.id);
 
 	return jsonOk(toRegistroDTO(registro), 201);
 };

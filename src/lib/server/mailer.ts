@@ -9,6 +9,7 @@
 
 import 'dotenv/config';
 import nodemailer, { type Transporter } from 'nodemailer';
+import type { ComprovanteData } from '@/lib/server/comprovante/types';
 
 let transporter: Transporter | null = null;
 
@@ -118,5 +119,43 @@ export async function sendWelcomeEmail(
 		to,
 		subject: 'Bem-vindo ao Ponto Digital — crie sua senha',
 		html
+	});
+}
+
+/**
+ * Envia o comprovante de ponto em anexo (PDF).
+ * Se SMTP não estiver configurado, apenas loga o evento (dev).
+ */
+export async function sendComprovanteEmail(input: {
+	to: string;
+	data: ComprovanteData;
+	pdfBuffer: Buffer;
+}) {
+	const { to, data, pdfBuffer } = input;
+	const t = getTransporter();
+
+	const subject = `Comprovante de Ponto — ${data.tipoLabel} — ${data.hora.slice(0, 5)} | ${data.data}`;
+	const filename = data.nomeArquivo ?? `comprovante-ponto-${data.nsrFormatado}.pdf`;
+
+	if (!t) {
+		console.log(
+			`\n[mailer:dev] Envio de comprovante para ${to} (${data.colaboradorNome}).\n[mailer:dev] Assunto: ${subject}\n[mailer:dev] Anexo: ${filename}\n`
+		);
+		return;
+	}
+
+	await t.sendMail({
+		from: process.env.SMTP_FROM ?? 'Ponto Digital <no-reply@pontodigital.app>',
+		to,
+		subject,
+		html: data.emailHtml ?? undefined,
+		text: data.emailText ?? undefined,
+		attachments: [
+			{
+				filename,
+				content: pdfBuffer,
+				contentType: 'application/pdf'
+			}
+		]
 	});
 }

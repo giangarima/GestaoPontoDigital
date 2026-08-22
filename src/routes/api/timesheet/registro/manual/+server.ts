@@ -1,14 +1,7 @@
-/**
- * @endpoint POST /api/timesheet/registro/manual
- * @description Admin cria batida retroativa para um colaborador da própria empresa.
- *
- * Conformidade Portaria 671/2021: a batida é criada como registro novo (imutável)
- * com `method: 'manual'`, `createdBy = adminId` e `createdReason` obrigatório.
- * Não substitui nem altera batidas existentes.
- */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { criarRegistro } from '@/lib/server/registro-ledger';
+import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../_lib/auth-helpers';
 
@@ -66,6 +59,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			criadoMotivo: body.reason!.trim()
 		})
 	);
+
+	void emitirComprovante(registro.id);
 
 	return jsonOk(toRegistroDTO(registro), 201);
 };

@@ -26,6 +26,8 @@ model Empresa {
   departamentos Departamento[]
   registros     Registro[]
   ausencias     Ausencia[]
+  nsrSequencia  EmpresaNsrSequencia?
+  comprovantes  Comprovante[]
 
   @@map("empresas")
 }
@@ -142,25 +144,23 @@ model JornadaVersao {
 model Registro {
   id                String            @id @default(cuid())
   colaboradorId     String            @map("colaborador_id")
-  // Restrict (não Cascade): batidas nunca são destruídas por remoção de colaborador.
-  // A remoção de colaborador é soft (deletedAt), então na prática isto não dispara.
   colaborador       Colaborador       @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
   empresaId         String            @map("empresa_id")
   empresa           Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  tipo              String // "entrada" | "saida_almoco" | "retorno_almoco" | "saida"
+  tipo              String            // "entrada" | "saida_almoco" | "retorno_almoco" | "saida"
   marcadoEm         DateTime          @default(now()) @map("marcado_em") @db.Timestamptz(6)
-  metodo            String // "manual"
+  metodo            String            // "manual"
   nsr               BigInt            @map("nsr")
   hash              String
   hashAnterior      String?           @map("hash_anterior")
-  // Auditoria — Portaria 671/2021: registros são imutáveis.
-  // criadoPor preenchido apenas quando admin cria batida em nome de um colaborador (Usuario.id).
+
   criadoPor         String?           @map("criado_por")
   criadoPorRef      Usuario?          @relation("registroCriadoPor", fields: [criadoPor], references: [id], onDelete: Restrict)
   criadoMotivo      String?           @map("criado_motivo")
   anulacao          RegistroAnulacao? @relation("registroAnulado")
-  // Anulação que esta batida corrige (preenchido quando a batida nasceu de um ajuste).
   substituiAnulacao RegistroAnulacao? @relation("registroSubstituto")
+
+  comprovante        Comprovante?      @relation("registro_comprovante")
 
   @@unique([empresaId, nsr])
   @@index([colaboradorId, marcadoEm])
@@ -186,6 +186,35 @@ model RegistroAnulacao {
 
   @@index([empresaId])
   @@map("registro_anulacoes")
+}
+
+model EmpresaNsrSequencia {
+  empresaId  String  @id @map("empresa_id")
+  proximoNsr BigInt  @default(1) @map("proximo_nsr")
+  empresa    Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@map("empresa_nsr_sequencias")
+}
+
+model Comprovante {
+  id             String    @id @default(cuid())
+  registroId     String    @unique @map("registro_id")
+  registro       Registro  @relation("registro_comprovante", fields: [registroId], references: [id], onDelete: Restrict)
+  empresaId      String    @map("empresa_id")
+  empresa        Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  colaboradorId  String    @map("colaborador_id")
+  nsr            BigInt    @map("nsr")
+  caminhoArquivo String    @map("caminho_arquivo")
+  hashSha256     String    @map("hash_sha256")
+  geradoEm       DateTime  @default(now()) @map("gerado_em") @db.Timestamptz(6)
+  enviadoEm      DateTime? @map("enviado_em") @db.Timestamptz(6)
+  envioStatus    String    @default("pendente") @map("envio_status")
+  envioErro      String?   @map("envio_erro")
+
+  @@index([empresaId, geradoEm])
+  @@index([colaboradorId, geradoEm])
+  @@index([envioStatus])
+  @@map("comprovantes")
 }
 
 // Ausência / afastamento — unifica férias, atestados e folgas sob um único
