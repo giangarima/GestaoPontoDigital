@@ -58,6 +58,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		const novo = await criarRegistro(tx, {
 			colaboradorId: registro.colaboradorId,
 			empresaId: admin.empresaId,
+			cpf: registro.cpf,
 			tipo,
 			marcadoEm: ts,
 			metodo: 'manual',

@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { toColaboradorDTO, emailEmUso, cpfEmUso, mapPrismaError } from '@/lib/server/colaborador';
+import { registrarEventoEmpregado } from '@/lib/server/registro-ledger';
 import { colaboradorUpdateSchema } from '@/lib/schemas/colaborador.schema';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
@@ -88,7 +89,7 @@ export const PUT: RequestHandler = async ({ request, params }) => {
 					data: { nome: data.nome, email: data.email, cpf: data.cpf }
 				});
 			}
-			return tx.colaborador.update({
+			const colab = await tx.colaborador.update({
 				where: { id: params.id },
 				data: {
 					cargo: data.cargo,
@@ -103,6 +104,16 @@ export const PUT: RequestHandler = async ({ request, params }) => {
 					usuario: { select: { nome: true, email: true, cpf: true } }
 				}
 			});
+			// AFD tipo 5: evento de alteração de empregado na cadeia de NSR.
+			await registrarEventoEmpregado(tx, {
+				empresaId: admin.empresaId,
+				operacao: 'A',
+				cpfEmpregado: colab.usuario.cpf,
+				nomeEmpregado: colab.usuario.nome,
+				cpfResponsavel: admin.cpf,
+				colaboradorId: colab.id
+			});
+			return colab;
 		});
 
 		return jsonOk(toColaboradorDTO(user));
@@ -119,15 +130,29 @@ export const DELETE: RequestHandler = async ({ request, params }) => {
 		return response as Response;
 	}
 
-	const existing = await prisma.colaborador.findUnique({ where: { id: params.id } });
+	const existing = await prisma.colaborador.findUnique({
+		where: { id: params.id },
+		include: { usuario: { select: { nome: true, cpf: true } } }
+	});
 	if (!existing || existing.empresaId !== admin.empresaId || existing.deletedAt) {
 		return jsonError('Colaborador não encontrado', 404);
 	}
 
 	// Soft delete — Portaria 671/2021: preserva o histórico de ponto (Registro).
-	await prisma.colaborador.update({
-		where: { id: params.id },
-		data: { deletedAt: new Date(), status: 'inativo' }
+	// AFD tipo 5: registra o evento de exclusão do empregado na cadeia de NSR.
+	await prisma.$transaction(async (tx) => {
+		await tx.colaborador.update({
+			where: { id: params.id },
+			data: { deletedAt: new Date(), status: 'inativo' }
+		});
+		await registrarEventoEmpregado(tx, {
+			empresaId: admin.empresaId,
+			operacao: 'E',
+			cpfEmpregado: existing.usuario.cpf,
+			nomeEmpregado: existing.usuario.nome,
+			cpfResponsavel: admin.cpf,
+			colaboradorId: existing.id
+		});
 	});
 	return new Response(null, { status: 204 });
 };

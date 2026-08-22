@@ -114,6 +114,32 @@
 		URL.revokeObjectURL(url);
 	}
 
+	let baixandoAfd = $state(false);
+	async function baixarAfd() {
+		baixandoAfd = true;
+		errorMsg = '';
+		try {
+			const token = localStorage.getItem('auth_token');
+			const res = await fetch('/api/relatorios/afd', {
+				headers: token ? { Authorization: `Bearer ${token}` } : {}
+			});
+			if (!res.ok) throw new Error('Falha ao gerar o AFD.');
+			const blob = await res.blob();
+			const disp = res.headers.get('Content-Disposition') ?? '';
+			const nome = disp.match(/filename="(.+?)"/)?.[1] ?? 'AFD.txt';
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = nome;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			errorMsg = e instanceof Error ? e.message : 'Erro ao gerar o AFD.';
+		} finally {
+			baixandoAfd = false;
+		}
+	}
+
 	function initialsFromName(name: string): string {
 		return name
 			.split(' ')
@@ -136,12 +162,23 @@
 <section class="admin-page">
 	<header class="admin-page__header">
 		<h1>Relatórios</h1>
-		{#if aba === 'consolidado' && conResult}
-			<button class="export-btn" onclick={exportarCsv}>
+		<div class="header-actions">
+			{#if aba === 'consolidado' && conResult}
+				<button class="export-btn" onclick={exportarCsv}>
+					<Icon name="download" size={13} />
+					Exportar CSV
+				</button>
+			{/if}
+			<button
+				class="export-btn"
+				onclick={baixarAfd}
+				disabled={baixandoAfd}
+				title="Arquivo Fonte de Dados — Portaria 671/2021"
+			>
 				<Icon name="download" size={13} />
-				Exportar CSV
+				{baixandoAfd ? 'Gerando…' : 'Baixar AFD'}
 			</button>
-		{/if}
+		</div>
 	</header>
 
 	<div class="tabs" role="tablist">
@@ -340,6 +377,12 @@
 </section>
 
 <style>
+	.header-actions {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
 	.export-btn {
 		display: inline-flex;
 		align-items: center;

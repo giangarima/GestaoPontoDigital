@@ -1,26 +1,31 @@
 /**
  * @module lib/server/registro-ledger
- * @description Cadeia de integridade (hash-chain) + NSR sequencial das batidas.
+ * @description Cadeia unificada de NSR do REP (Portaria 671/2021) + hash-chain das
+ * batidas. Todo evento do AFD — empregador (tipo 2), empregado (tipo 5) e marcação
+ * (tipo 7) — recebe um NSR único por empresa, alocado atomicamente pelo contador
+ * `Empresa.ultimoNsr`. O `UPDATE ... RETURNING` trava a linha da empresa até o
+ * commit, serializando a alocação e a leitura do elo anterior (sem forks).
  *
- * Portaria 671/2021 (REP-P): o AFD exige NSR (Número Sequencial de Registro)
- * unitário por estabelecimento e integridade verificável dos registros. Aqui o
- * estabelecimento é a empresa (`empresaId`). Cada batida recebe:
- *  - `nsr`: contador por empresa, iniciando em 1, na ordem de inserção;
- *  - `hash`: SHA-256 do conteúdo canônico encadeado ao hash da batida anterior.
- *
- * Alterar uma batida antiga direto no banco quebra a cadeia — `verificarCadeia`
- * detecta, elevando a imutabilidade de convenção para garantia técnica.
- *
- * A serialização canônica vive em `registro-hash.ts` (puro, compartilhado com o seed).
+ * O encadeamento SHA-256 é só das batidas (tipo 7): `hashAnterior` aponta para o
+ * hash da batida de maior NSR anterior. A serialização/hash vive em `registro-hash.ts`.
  */
 import { prisma } from '@/lib/server/db';
-import { GENESIS_HASH, hashRegistro } from '@/lib/server/registro-hash';
+import { hashRegistro } from '@/lib/server/registro-hash';
 import type { Prisma, Registro } from '@/lib/server/prisma-client/client';
 
-/** Dados de uma nova batida (os campos de cadeia são calculados aqui). */
+/** Aloca o próximo NSR da empresa de forma atômica (serializa por row lock). */
+export async function proximoNsr(tx: Prisma.TransactionClient, empresaId: string): Promise<bigint> {
+	const rows = await tx.$queryRaw<{ ultimo_nsr: bigint }[]>`
+		UPDATE empresas SET ultimo_nsr = ultimo_nsr + 1 WHERE id = ${empresaId} RETURNING ultimo_nsr`;
+	if (rows.length === 0) throw new Error(`Empresa ${empresaId} não encontrada ao alocar NSR`);
+	return rows[0].ultimo_nsr;
+}
+
+/** Dados de uma nova batida (NSR, hash e data de gravação são calculados aqui). */
 export interface NovoRegistroData {
 	colaboradorId: string;
 	empresaId: string;
+	cpf: string; // CPF de quem bateu (snapshot congelado na batida)
 	tipo: string;
 	metodo: string;
 	marcadoEm?: Date;
@@ -29,48 +34,38 @@ export interface NovoRegistroData {
 }
 
 /**
- * Cria uma batida atribuindo NSR e hash-chain de forma atômica. DEVE rodar dentro
- * de uma transação: um advisory lock por empresa serializa a atribuição de NSR
- * até o commit, evitando buracos/colisões sob concorrência (o `@@unique
- * [empresaId, nsr]` é a rede de segurança).
+ * Cria uma batida (AFD tipo 7) atribuindo NSR e hash-chain. DEVE rodar dentro de
+ * uma transação. `registradoEm` = agora (DH de gravação); `marcadoEm` pode ser
+ * retroativo (lançamento manual). O hash gravado é o campo 8 do registro tipo 7.
  */
 export async function criarRegistro(
 	tx: Prisma.TransactionClient,
 	data: NovoRegistroData
 ): Promise<Registro> {
-	await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'registro_nsr:' + data.empresaId}))`;
+	const nsr = await proximoNsr(tx, data.empresaId);
 
-	const head = await tx.registro.findFirst({
+	// Elo anterior = hash da batida de maior NSR existente (eventos tipo 2/5 não
+	// entram na cadeia de hash). null no primeiro elo.
+	const ultima = await tx.registro.findFirst({
 		where: { empresaId: data.empresaId },
 		orderBy: { nsr: 'desc' },
-		select: { nsr: true, hash: true }
+		select: { hash: true }
 	});
+	const hashAnterior = ultima?.hash ?? null;
 
-	const nsr = (head?.nsr ?? 0n) + 1n;
-	const hashAnterior = head?.hash ?? GENESIS_HASH;
 	const marcadoEm = data.marcadoEm ?? new Date();
-
-	const hash = hashRegistro(
-		{
-			empresaId: data.empresaId,
-			colaboradorId: data.colaboradorId,
-			nsr,
-			tipo: data.tipo,
-			marcadoEm,
-			metodo: data.metodo,
-			criadoPor: data.criadoPor,
-			criadoMotivo: data.criadoMotivo
-		},
-		hashAnterior
-	);
+	const registradoEm = new Date();
+	const hash = hashRegistro({ nsr, marcadoEm, cpf: data.cpf, registradoEm }, hashAnterior);
 
 	return tx.registro.create({
 		data: {
 			colaboradorId: data.colaboradorId,
 			empresaId: data.empresaId,
+			cpf: data.cpf,
 			tipo: data.tipo,
 			metodo: data.metodo,
 			marcadoEm,
+			registradoEm,
 			criadoPor: data.criadoPor ?? undefined,
 			criadoMotivo: data.criadoMotivo ?? undefined,
 			nsr,
@@ -80,18 +75,76 @@ export async function criarRegistro(
 	});
 }
 
-/** Resultado da auditoria da cadeia de uma empresa. */
+/** Evento de empregador (AFD tipo 2). */
+export interface NovoEventoEmpregador {
+	empresaId: string;
+	cpfResponsavel: string;
+	inscricaoTipo: string; // "1" CNPJ | "2" CPF
+	inscricao: string; // só dígitos
+	caepfCno?: string | null;
+	razaoSocial: string;
+	localPrestacao?: string | null;
+}
+
+export async function registrarEventoEmpregador(
+	tx: Prisma.TransactionClient,
+	data: NovoEventoEmpregador
+) {
+	const nsr = await proximoNsr(tx, data.empresaId);
+	return tx.eventoEmpregador.create({
+		data: {
+			empresaId: data.empresaId,
+			nsr,
+			cpfResponsavel: data.cpfResponsavel,
+			inscricaoTipo: data.inscricaoTipo,
+			inscricao: data.inscricao,
+			caepfCno: data.caepfCno ?? undefined,
+			razaoSocial: data.razaoSocial,
+			localPrestacao: data.localPrestacao ?? undefined
+		}
+	});
+}
+
+/** Evento de empregado (AFD tipo 5). */
+export interface NovoEventoEmpregado {
+	empresaId: string;
+	operacao: 'I' | 'A' | 'E';
+	cpfEmpregado: string;
+	nomeEmpregado: string;
+	cpfResponsavel: string;
+	colaboradorId?: string | null;
+}
+
+export async function registrarEventoEmpregado(
+	tx: Prisma.TransactionClient,
+	data: NovoEventoEmpregado
+) {
+	const nsr = await proximoNsr(tx, data.empresaId);
+	return tx.eventoEmpregado.create({
+		data: {
+			empresaId: data.empresaId,
+			nsr,
+			operacao: data.operacao,
+			cpfEmpregado: data.cpfEmpregado,
+			nomeEmpregado: data.nomeEmpregado,
+			cpfResponsavel: data.cpfResponsavel,
+			colaboradorId: data.colaboradorId ?? undefined
+		}
+	});
+}
+
+/** Resultado da auditoria da cadeia de batidas de uma empresa. */
 export interface CadeiaResultado {
 	total: number;
 	valida: boolean;
-	/** Primeiro NSR onde a cadeia quebrou (null se íntegra). */
+	/** NSR da batida onde a cadeia quebrou (null se íntegra). */
 	quebraNsr: string | null;
 	motivo: string | null;
 }
 
 /**
- * Percorre as batidas por NSR crescente e recomputa a cadeia, retornando o
- * primeiro ponto de quebra (sequência de NSR, elo ou conteúdo adulterado).
+ * Percorre as batidas por NSR crescente e recomputa o hash tipo 7, retornando o
+ * primeiro ponto de quebra (elo ou conteúdo adulterado).
  */
 export async function verificarCadeia(empresaId: string): Promise<CadeiaResultado> {
 	const registros = await prisma.registro.findMany({
@@ -99,19 +152,15 @@ export async function verificarCadeia(empresaId: string): Promise<CadeiaResultad
 		orderBy: { nsr: 'asc' },
 		select: {
 			nsr: true,
-			colaboradorId: true,
-			tipo: true,
 			marcadoEm: true,
-			metodo: true,
-			criadoPor: true,
-			criadoMotivo: true,
+			cpf: true,
+			registradoEm: true,
 			hash: true,
 			hashAnterior: true
 		}
 	});
 
-	let anterior = GENESIS_HASH;
-	let esperadoNsr = 1n;
+	let anterior: string | null = null;
 	for (const r of registros) {
 		const quebra = (motivo: string): CadeiaResultado => ({
 			total: registros.length,
@@ -120,27 +169,15 @@ export async function verificarCadeia(empresaId: string): Promise<CadeiaResultad
 			motivo
 		});
 
-		if (r.nsr !== esperadoNsr) return quebra(`NSR fora de sequência (esperado ${esperadoNsr})`);
-		if ((r.hashAnterior ?? GENESIS_HASH) !== anterior)
-			return quebra('hashAnterior não corresponde');
+		if ((r.hashAnterior ?? null) !== anterior) return quebra('hashAnterior não corresponde');
 
 		const recalc = hashRegistro(
-			{
-				empresaId,
-				colaboradorId: r.colaboradorId,
-				nsr: r.nsr,
-				tipo: r.tipo,
-				marcadoEm: r.marcadoEm,
-				metodo: r.metodo,
-				criadoPor: r.criadoPor,
-				criadoMotivo: r.criadoMotivo
-			},
+			{ nsr: r.nsr, marcadoEm: r.marcadoEm, cpf: r.cpf, registradoEm: r.registradoEm },
 			anterior
 		);
 		if (recalc !== r.hash) return quebra('hash não corresponde (conteúdo alterado)');
 
 		anterior = r.hash;
-		esperadoNsr += 1n;
 	}
 
 	return { total: registros.length, valida: true, quebraNsr: null, motivo: null };

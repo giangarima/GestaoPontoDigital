@@ -38,3 +38,31 @@ export function formatCpfInput(value: string): string {
 	if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
 	return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
+
+export function isValidCnpj(cnpj: string): boolean {
+	const digits = cnpj.replace(/\D/g, '');
+	if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false;
+
+	// Dígitos verificadores com pesos cíclicos 2..9.
+	const calc = (len: number): number => {
+		let sum = 0;
+		let peso = len - 7;
+		for (let i = 0; i < len; i++) {
+			sum += Number(digits[i]) * peso;
+			peso = peso === 2 ? 9 : peso - 1;
+		}
+		const r = sum % 11;
+		return r < 2 ? 0 : 11 - r;
+	};
+
+	return calc(12) === Number(digits[12]) && calc(13) === Number(digits[13]);
+}
+
+export function formatCnpjInput(value: string): string {
+	const d = value.replace(/\D/g, '').slice(0, 14);
+	if (d.length <= 2) return d;
+	if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
+	if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+	if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+	return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
