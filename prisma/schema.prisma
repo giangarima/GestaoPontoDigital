@@ -150,6 +150,9 @@ model Registro {
   tipo              String // "entrada" | "saida_almoco" | "retorno_almoco" | "saida"
   marcadoEm         DateTime          @default(now()) @map("marcado_em") @db.Timestamptz(6)
   metodo            String // "manual"
+  nsr               BigInt            @map("nsr")
+  hash              String
+  hashAnterior      String?           @map("hash_anterior")
   // Auditoria — Portaria 671/2021: registros são imutáveis.
   // criadoPor preenchido apenas quando admin cria batida em nome de um colaborador (Usuario.id).
   criadoPor         String?           @map("criado_por")
@@ -159,6 +162,7 @@ model Registro {
   // Anulação que esta batida corrige (preenchido quando a batida nasceu de um ajuste).
   substituiAnulacao RegistroAnulacao? @relation("registroSubstituto")
 
+  @@unique([empresaId, nsr])
   @@index([colaboradorId, marcadoEm])
   @@index([empresaId, marcadoEm])
   @@map("registros")

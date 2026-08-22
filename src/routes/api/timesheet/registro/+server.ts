@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
+import { criarRegistro } from '@/lib/server/registro-ledger';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireUser, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
@@ -29,14 +30,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		return jsonError(`type deve ser um de: ${VALID_TYPES.join(', ')}`, 400);
 	}
 
-	const registro = await prisma.registro.create({
-		data: {
-			colaboradorId: user.colaboradorId,
+	const registro = await prisma.$transaction((tx) =>
+		criarRegistro(tx, {
+			colaboradorId: user.colaboradorId!,
 			empresaId: user.empresaId,
-			tipo: body.type,
+			tipo: body.type!,
 			metodo: 'manual'
-		}
-	});
+		})
+	);
 
 	return jsonOk(toRegistroDTO(registro), 201);
 };

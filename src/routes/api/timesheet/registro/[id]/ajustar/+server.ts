@@ -10,6 +10,7 @@
  */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
+import { criarRegistro } from '@/lib/server/registro-ledger';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../../_lib/auth-helpers';
 
@@ -63,16 +64,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	const motivo = body.reason.trim();
 
 	const corrigido = await prisma.$transaction(async (tx) => {
-		const novo = await tx.registro.create({
-			data: {
-				colaboradorId: registro.colaboradorId,
-				empresaId: admin.empresaId,
-				tipo,
-				marcadoEm: ts,
-				metodo: 'manual',
-				criadoPor: admin.id,
-				criadoMotivo: motivo
-			}
+		const novo = await criarRegistro(tx, {
+			colaboradorId: registro.colaboradorId,
+			empresaId: admin.empresaId,
+			tipo,
+			marcadoEm: ts,
+			metodo: 'manual',
+			criadoPor: admin.id,
+			criadoMotivo: motivo
 		});
 
 		await tx.registroAnulacao.create({
@@ -85,11 +84,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			}
 		});
 
-		return tx.registro.findUnique({
-			where: { id: novo.id },
-			include: { anulacao: true }
-		});
+		return novo;
 	});
 
-	return jsonOk(toRegistroDTO(corrigido!), 201);
+	return jsonOk(toRegistroDTO(corrigido), 201);
 };

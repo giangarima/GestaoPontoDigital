@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/lib/server/prisma-client/client';
+import { GENESIS_HASH, hashRegistro } from '../src/lib/server/registro-hash';
 import bcrypt from 'bcryptjs';
 import process from 'process';
 
@@ -327,7 +328,52 @@ const HORARIO_PADRAO: Record<RegistroTipo, string> = {
 	saida: '17:00'
 };
 
-async function seedAjustesDemo(empresaId: string, adminId: string, colaboradorId: string) {
+// ── Cadeia de integridade (NSR + hash-chain) ─────────────────────────────────
+// Encadeia cada batida na ordem de criação, usando o mesmo módulo puro que a
+// aplicação (registro-hash.ts). NSR unitário por empresa, começando em 1. Assim
+// o seed nasce com uma cadeia íntegra e verificável por `verificarCadeia`.
+interface EloInput {
+	colaboradorId: string;
+	tipo: RegistroTipo;
+	marcadoEm: Date;
+	metodo: 'manual';
+	criadoPor?: string | null;
+	criadoMotivo?: string | null;
+}
+
+function makeEloAssigner(empresaId: string) {
+	let ultimoNsr = 0n;
+	let ultimoHash = GENESIS_HASH;
+	return (r: EloInput): { nsr: bigint; hash: string; hashAnterior: string } => {
+		const nsr = ultimoNsr + 1n;
+		const hashAnterior = ultimoHash;
+		const hash = hashRegistro(
+			{
+				empresaId,
+				colaboradorId: r.colaboradorId,
+				nsr,
+				tipo: r.tipo,
+				marcadoEm: r.marcadoEm,
+				metodo: r.metodo,
+				criadoPor: r.criadoPor,
+				criadoMotivo: r.criadoMotivo
+			},
+			hashAnterior
+		);
+		ultimoNsr = nsr;
+		ultimoHash = hash;
+		return { nsr, hash, hashAnterior };
+	};
+}
+
+type EloAssigner = ReturnType<typeof makeEloAssigner>;
+
+async function seedAjustesDemo(
+	empresaId: string,
+	adminId: string,
+	colaboradorId: string,
+	elo: EloAssigner
+) {
 	const registros = await prisma.registro.findMany({
 		where: { colaboradorId, criadoPor: null },
 		orderBy: { marcadoEm: 'asc' }
@@ -351,15 +397,26 @@ async function seedAjustesDemo(empresaId: string, adminId: string, colaboradorId
 		if (tipos.size === 0 || tipos.size === 4) continue;
 		const faltando = TODOS_TIPOS.find((t) => !tipos.has(t));
 		if (!faltando) continue;
+		const marcadoEm = buildTimestamp(dia, HORARIO_PADRAO[faltando], 0);
+		const criadoMotivo = 'Colaborador esqueceu de bater — confirmado pelo gestor.';
+		const cadeia = elo({
+			colaboradorId,
+			tipo: faltando,
+			marcadoEm,
+			metodo: 'manual',
+			criadoPor: adminId,
+			criadoMotivo
+		});
 		await prisma.registro.create({
 			data: {
 				colaboradorId,
 				empresaId,
 				tipo: faltando,
-				marcadoEm: buildTimestamp(dia, HORARIO_PADRAO[faltando], 0),
+				marcadoEm,
 				metodo: 'manual',
 				criadoPor: adminId,
-				criadoMotivo: 'Colaborador esqueceu de bater — confirmado pelo gestor.'
+				criadoMotivo,
+				...cadeia
 			}
 		});
 		manuais++;
@@ -389,16 +446,26 @@ async function seedAjustesDemo(empresaId: string, adminId: string, colaboradorId
 		if (new Set(regs.map((r) => r.tipo)).size !== 4) continue;
 		const corr = correcoes[ci];
 		const original = regs.find((r) => r.tipo === corr.tipo)!;
+		const marcadoEm = buildTimestamp(dia, corr.horario, 0);
+		const cadeia = elo({
+			colaboradorId,
+			tipo: corr.tipo,
+			marcadoEm,
+			metodo: 'manual',
+			criadoPor: adminId,
+			criadoMotivo: corr.motivo
+		});
 		await prisma.$transaction(async (tx) => {
 			const novo = await tx.registro.create({
 				data: {
 					colaboradorId,
 					empresaId,
 					tipo: corr.tipo,
-					marcadoEm: buildTimestamp(dia, corr.horario, 0),
+					marcadoEm,
 					metodo: 'manual',
 					criadoPor: adminId,
-					criadoMotivo: corr.motivo
+					criadoMotivo: corr.motivo,
+					...cadeia
 				}
 			});
 			await tx.registroAnulacao.create({
@@ -485,6 +552,10 @@ async function main() {
 
 	let totalRegistros = 0;
 
+	// Assinador da cadeia da empresa — compartilhado por todas as batidas (bulk +
+	// ajustes/lançamentos), preservando NSR e hash-chain contínuos.
+	const elo = makeEloAssigner(empresa.id);
+
 	for (const c of colaboradoresSeed) {
 		const jornada = jornadasMap[c.jornada];
 
@@ -565,6 +636,9 @@ async function main() {
 			tipo: RegistroTipo;
 			marcadoEm: Date;
 			metodo: 'manual';
+			nsr: bigint;
+			hash: string;
+			hashAnterior: string;
 		}[] = [];
 
 		for (const { iso, dow } of iterDates(2026, 1)) {
@@ -572,12 +646,19 @@ async function main() {
 			const diaConfig = jornada.dias[dow];
 			const pontos = gerarPontosDoDia(rng, iso, diaConfig, c.comportamento);
 			for (const p of pontos) {
+				const cadeia = elo({
+					colaboradorId: colaborador.id,
+					tipo: p.tipo,
+					marcadoEm: p.marcadoEm,
+					metodo: p.metodo
+				});
 				registrosData.push({
 					colaboradorId: colaborador.id,
 					empresaId: empresa.id,
 					tipo: p.tipo,
 					marcadoEm: p.marcadoEm,
-					metodo: p.metodo
+					metodo: p.metodo,
+					...cadeia
 				});
 			}
 		}
@@ -593,7 +674,7 @@ async function main() {
 		where: { usuario: { email: 'carlos@teste.com' } }
 	});
 	const demo = carlos
-		? await seedAjustesDemo(empresa.id, admin.id, carlos.id)
+		? await seedAjustesDemo(empresa.id, admin.id, carlos.id, elo)
 		: { ajustes: 0, manuais: 0 };
 
 	console.log(
