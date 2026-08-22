@@ -1,14 +1,6 @@
-/**
- * @endpoint POST /api/timesheet/registro/manual
- * @description Admin cria batida retroativa para um colaborador da própria empresa.
- *
- * Conformidade Portaria 671/2021: a batida é criada como registro novo (imutável)
- * com `method: 'manual'`, `createdBy = adminId` e `createdReason` obrigatório.
- * Não substitui nem altera batidas existentes.
- */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { createRegistroComNsr } from '@/lib/server/registro';
+import { criarRegistro } from '@/lib/server/registro-ledger';
 import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../_lib/auth-helpers';
@@ -56,15 +48,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		return jsonError('Colaborador não encontrado', 404);
 	}
 
-	const registro = await createRegistroComNsr({
-		colaboradorId: colaborador.id,
-		empresaId: admin.empresaId,
-		tipo: body.type,
-		metodo: 'manual',
-		marcadoEm: ts,
-		criadoPor: admin.id,
-		criadoMotivo: body.reason.trim()
-	});
+	const registro = await prisma.$transaction((tx) =>
+		criarRegistro(tx, {
+			colaboradorId: colaborador.id,
+			empresaId: admin.empresaId,
+			tipo: body.type!,
+			marcadoEm: ts,
+			metodo: 'manual',
+			criadoPor: admin.id,
+			criadoMotivo: body.reason!.trim()
+		})
+	);
 
 	void emitirComprovante(registro.id);
 

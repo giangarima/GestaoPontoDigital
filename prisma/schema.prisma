@@ -144,27 +144,25 @@ model JornadaVersao {
 model Registro {
   id                String            @id @default(cuid())
   colaboradorId     String            @map("colaborador_id")
-  // Restrict (não Cascade): batidas nunca são destruídas por remoção de colaborador.
-  // A remoção de colaborador é soft (deletedAt), então na prática isto não dispara.
   colaborador       Colaborador       @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
   empresaId         String            @map("empresa_id")
   empresa           Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  tipo              String // "entrada" | "saida_almoco" | "retorno_almoco" | "saida"
+  tipo              String            // "entrada" | "saida_almoco" | "retorno_almoco" | "saida"
   marcadoEm         DateTime          @default(now()) @map("marcado_em") @db.Timestamptz(6)
-  metodo            String // "manual"
-  nsr               BigInt?           @map("nsr")
-  // Auditoria — Portaria 671/2021: registros são imutáveis.
-  // criadoPor preenchido apenas quando admin cria batida em nome de um colaborador (Usuario.id).
+  metodo            String            // "manual"
+  nsr               BigInt            @map("nsr")
+  hash              String
+  hashAnterior      String?           @map("hash_anterior")
+
   criadoPor         String?           @map("criado_por")
   criadoPorRef      Usuario?          @relation("registroCriadoPor", fields: [criadoPor], references: [id], onDelete: Restrict)
   criadoMotivo      String?           @map("criado_motivo")
   anulacao          RegistroAnulacao? @relation("registroAnulado")
-  // Anulação que esta batida corrige (preenchido quando a batida nasceu de um ajuste).
   substituiAnulacao RegistroAnulacao? @relation("registroSubstituto")
 
-  // Relação opcional para o comprovante gerado a partir deste registro
-  comprovante Comprovante? @relation("registro_comprovante")
+  comprovante        Comprovante?      @relation("registro_comprovante")
 
+  @@unique([empresaId, nsr])
   @@index([colaboradorId, marcadoEm])
   @@index([empresaId, marcadoEm])
   @@map("registros")

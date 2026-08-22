@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { createRegistroComNsr } from '@/lib/server/registro';
+import { prisma } from '@/lib/server/db';
+import { criarRegistro } from '@/lib/server/registro-ledger';
 import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireUser, jsonError, jsonOk } from '../../_lib/auth-helpers';
@@ -14,7 +15,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		return response as Response;
 	}
 
-	// Só quem tem vínculo de colaborador bate ponto (o token carrega o colaboradorId).
 	if (!user.colaboradorId) {
 		return jsonError('Usuário sem vínculo de colaborador não registra ponto', 403);
 	}
@@ -30,14 +30,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		return jsonError(`type deve ser um de: ${VALID_TYPES.join(', ')}`, 400);
 	}
 
-	const registro = await createRegistroComNsr({
-		colaboradorId: user.colaboradorId,
-		empresaId: user.empresaId,
-		tipo: body.type,
-		metodo: 'manual'
-	});
+	const registro = await prisma.$transaction((tx) =>
+		criarRegistro(tx, {
+			colaboradorId: user.colaboradorId!,
+			empresaId: user.empresaId,
+			tipo: body.type!,
+			metodo: 'manual'
+		})
+	);
 
-	// Dispara pipeline de geração/assinatura/envio de comprovante de forma assíncrona
 	void emitirComprovante(registro.id);
 
 	return jsonOk(toRegistroDTO(registro), 201);

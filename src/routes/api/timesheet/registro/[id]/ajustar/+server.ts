@@ -1,16 +1,6 @@
-/**
- * @endpoint POST /api/timesheet/registro/[id]/ajustar
- * @description Admin corrige uma batida existente da própria empresa.
- *
- * Conformidade Portaria 671/2021: a batida original NÃO é alterada nem removida.
- * Em uma única transação:
- *  - cria uma nova batida corrigida (`method: 'manual'`, imutável);
- *  - cria um RegistroAnulacao que invalida a original e aponta para a corrigida
- *    via `registroSubstitutoId`, preservando a trilha "antes → depois".
- */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { createRegistroComNsr } from '@/lib/server/registro';
+import { criarRegistro } from '@/lib/server/registro-ledger';
 import { emitirComprovante } from '@/lib/server/comprovante/emitir';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../../_lib/auth-helpers';
@@ -65,18 +55,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 	const motivo = body.reason.trim();
 
 	const corrigido = await prisma.$transaction(async (tx) => {
-		const novo = await createRegistroComNsr(
-			{
-				colaboradorId: registro.colaboradorId,
-				empresaId: admin.empresaId,
-				tipo,
-				marcadoEm: ts,
-				metodo: 'manual',
-				criadoPor: admin.id,
-				criadoMotivo: motivo
-			},
-			tx
-		);
+		const novo = await criarRegistro(tx, {
+			colaboradorId: registro.colaboradorId,
+			empresaId: admin.empresaId,
+			tipo,
+			marcadoEm: ts,
+			metodo: 'manual',
+			criadoPor: admin.id,
+			criadoMotivo: motivo
+		});
 
 		await tx.registroAnulacao.create({
 			data: {
@@ -91,8 +78,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
 		return tx.registro.findUnique({ where: { id: novo.id }, include: { anulacao: true } });
 	});
 
-	// Dispara emissão do comprovante para a nova batida
-	void emitirComprovante(corrigido!.id);
+	if (corrigido) {
+		void emitirComprovante(corrigido.id);
+	}
 
 	return jsonOk(toRegistroDTO(corrigido!), 201);
 };
