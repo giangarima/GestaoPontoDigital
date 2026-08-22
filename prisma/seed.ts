@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/lib/server/prisma-client/client';
-import { GENESIS_HASH, hashRegistro } from '../src/lib/server/registro-hash';
+import { hashRegistro } from '../src/lib/server/registro-hash';
 import bcrypt from 'bcryptjs';
 import process from 'process';
 
@@ -328,51 +328,51 @@ const HORARIO_PADRAO: Record<RegistroTipo, string> = {
 	saida: '17:00'
 };
 
-// ── Cadeia de integridade (NSR + hash-chain) ─────────────────────────────────
-// Encadeia cada batida na ordem de criação, usando o mesmo módulo puro que a
-// aplicação (registro-hash.ts). NSR unitário por empresa, começando em 1. Assim
-// o seed nasce com uma cadeia íntegra e verificável por `verificarCadeia`.
-interface EloInput {
-	colaboradorId: string;
-	tipo: RegistroTipo;
+// ── Cadeia unificada de NSR (tipo 2 empregador, tipo 5 empregado, tipo 7 batida) ─
+// Contador único em memória (o seed é single-threaded); ao final gravamos o valor
+// em Empresa.ultimoNsr para a aplicação continuar a sequência. O hash-chain é só
+// das batidas (tipo 7), com o mesmo módulo puro da aplicação (registro-hash.ts).
+interface BatidaElo {
+	cpf: string;
 	marcadoEm: Date;
-	metodo: 'manual';
-	criadoPor?: string | null;
-	criadoMotivo?: string | null;
+	registradoEm: Date;
 }
 
-function makeEloAssigner(empresaId: string) {
-	let ultimoNsr = 0n;
-	let ultimoHash = GENESIS_HASH;
-	return (r: EloInput): { nsr: bigint; hash: string; hashAnterior: string } => {
-		const nsr = ultimoNsr + 1n;
-		const hashAnterior = ultimoHash;
-		const hash = hashRegistro(
-			{
-				empresaId,
-				colaboradorId: r.colaboradorId,
-				nsr,
-				tipo: r.tipo,
-				marcadoEm: r.marcadoEm,
-				metodo: r.metodo,
-				criadoPor: r.criadoPor,
-				criadoMotivo: r.criadoMotivo
-			},
-			hashAnterior
-		);
-		ultimoNsr = nsr;
-		ultimoHash = hash;
-		return { nsr, hash, hashAnterior };
+function makeLedger() {
+	let nsr = 0n;
+	let ultimoHashBatida: string | null = null;
+	return {
+		/** Aloca o próximo NSR (para eventos tipo 2/5, fora do hash-chain). */
+		nextNsr(): bigint {
+			nsr += 1n;
+			return nsr;
+		},
+		/** Aloca NSR e encadeia o hash de uma batida (tipo 7). */
+		eloBatida(b: BatidaElo): { nsr: bigint; hash: string; hashAnterior: string | null } {
+			nsr += 1n;
+			const hashAnterior = ultimoHashBatida;
+			const hash = hashRegistro(
+				{ nsr, marcadoEm: b.marcadoEm, cpf: b.cpf, registradoEm: b.registradoEm },
+				hashAnterior
+			);
+			ultimoHashBatida = hash;
+			return { nsr, hash, hashAnterior };
+		},
+		/** NSR final alocado (para gravar em Empresa.ultimoNsr). */
+		get total(): bigint {
+			return nsr;
+		}
 	};
 }
 
-type EloAssigner = ReturnType<typeof makeEloAssigner>;
+type Ledger = ReturnType<typeof makeLedger>;
 
 async function seedAjustesDemo(
 	empresaId: string,
 	adminId: string,
 	colaboradorId: string,
-	elo: EloAssigner
+	cpf: string,
+	ledger: Ledger
 ) {
 	const registros = await prisma.registro.findMany({
 		where: { colaboradorId, criadoPor: null },
@@ -399,20 +399,15 @@ async function seedAjustesDemo(
 		if (!faltando) continue;
 		const marcadoEm = buildTimestamp(dia, HORARIO_PADRAO[faltando], 0);
 		const criadoMotivo = 'Colaborador esqueceu de bater — confirmado pelo gestor.';
-		const cadeia = elo({
-			colaboradorId,
-			tipo: faltando,
-			marcadoEm,
-			metodo: 'manual',
-			criadoPor: adminId,
-			criadoMotivo
-		});
+		const cadeia = ledger.eloBatida({ cpf, marcadoEm, registradoEm: marcadoEm });
 		await prisma.registro.create({
 			data: {
 				colaboradorId,
 				empresaId,
+				cpf,
 				tipo: faltando,
 				marcadoEm,
+				registradoEm: marcadoEm,
 				metodo: 'manual',
 				criadoPor: adminId,
 				criadoMotivo,
@@ -447,21 +442,16 @@ async function seedAjustesDemo(
 		const corr = correcoes[ci];
 		const original = regs.find((r) => r.tipo === corr.tipo)!;
 		const marcadoEm = buildTimestamp(dia, corr.horario, 0);
-		const cadeia = elo({
-			colaboradorId,
-			tipo: corr.tipo,
-			marcadoEm,
-			metodo: 'manual',
-			criadoPor: adminId,
-			criadoMotivo: corr.motivo
-		});
+		const cadeia = ledger.eloBatida({ cpf, marcadoEm, registradoEm: marcadoEm });
 		await prisma.$transaction(async (tx) => {
 			const novo = await tx.registro.create({
 				data: {
 					colaboradorId,
 					empresaId,
+					cpf,
 					tipo: corr.tipo,
 					marcadoEm,
+					registradoEm: marcadoEm,
 					metodo: 'manual',
 					criadoPor: adminId,
 					criadoMotivo: corr.motivo,
@@ -490,6 +480,8 @@ async function main() {
 	const senhaHash = await bcrypt.hash('Senha123', 10);
 
 	await prisma.ausencia.deleteMany();
+	await prisma.eventoEmpregado.deleteMany();
+	await prisma.eventoEmpregador.deleteMany();
 	await prisma.registroAnulacao.deleteMany();
 	await prisma.registro.deleteMany();
 	await prisma.colaborador.deleteMany();
@@ -503,6 +495,8 @@ async function main() {
 		data: {
 			nome: 'Empresa Demo',
 			cnpj: '00.000.000/0001-00',
+			razaoSocial: 'Empresa Demo Serviços LTDA',
+			localPrestacao: 'Matriz - Sede Administrativa',
 			horaAbertura: '08:00',
 			horaFechamento: '18:00'
 		}
@@ -545,6 +539,23 @@ async function main() {
 		}
 	});
 
+	// Cadeia de NSR do REP (empregador tipo 2 → empregados tipo 5 → batidas tipo 7).
+	const ledger = makeLedger();
+
+	// AFD tipo 2: inclusão do empregador (NSR 1).
+	await prisma.eventoEmpregador.create({
+		data: {
+			empresaId: empresa.id,
+			nsr: ledger.nextNsr(),
+			registradoEm: new Date('2025-12-01T09:00:00-0300'),
+			cpfResponsavel: admin.cpf,
+			inscricaoTipo: '1',
+			inscricao: (empresa.cnpj ?? '').replace(/\D/g, ''),
+			razaoSocial: empresa.razaoSocial ?? empresa.nome,
+			localPrestacao: empresa.localPrestacao
+		}
+	});
+
 	const jornadasMap = {
 		comercial: { id: comercial.id, dias: jornadaComercial },
 		meioPeriodo: { id: meioPeriodo.id, dias: jornadaMeioPeriodo }
@@ -552,12 +563,9 @@ async function main() {
 
 	let totalRegistros = 0;
 
-	// Assinador da cadeia da empresa — compartilhado por todas as batidas (bulk +
-	// ajustes/lançamentos), preservando NSR e hash-chain contínuos.
-	const elo = makeEloAssigner(empresa.id);
-
 	for (const c of colaboradoresSeed) {
 		const jornada = jornadasMap[c.jornada];
+		const cpfDigitos = c.cpf.replace(/\D/g, '');
 
 		// Identidade (login) + extensão de vínculo (colaborador). Daniela (RH) tem
 		// role='admin' e ainda ganha a linha de colaborador para bater ponto.
@@ -566,7 +574,7 @@ async function main() {
 				empresaId: empresa.id,
 				nome: c.nome,
 				email: c.email,
-				cpf: c.cpf.replace(/\D/g, ''),
+				cpf: cpfDigitos,
 				senhaHash,
 				role: c.isAdmin ? 'admin' : 'colaborador'
 			}
@@ -582,6 +590,20 @@ async function main() {
 				dataAdmissao: new Date(c.dataAdmissao),
 				status: c.status,
 				jornadaId: jornada.id
+			}
+		});
+
+		// AFD tipo 5: inclusão do empregado na cadeia de NSR.
+		await prisma.eventoEmpregado.create({
+			data: {
+				empresaId: empresa.id,
+				nsr: ledger.nextNsr(),
+				registradoEm: new Date(c.dataAdmissao),
+				operacao: 'I',
+				cpfEmpregado: cpfDigitos,
+				nomeEmpregado: c.nome,
+				cpfResponsavel: admin.cpf,
+				colaboradorId: colaborador.id
 			}
 		});
 
@@ -633,12 +655,14 @@ async function main() {
 		const registrosData: {
 			colaboradorId: string;
 			empresaId: string;
+			cpf: string;
 			tipo: RegistroTipo;
 			marcadoEm: Date;
+			registradoEm: Date;
 			metodo: 'manual';
 			nsr: bigint;
 			hash: string;
-			hashAnterior: string;
+			hashAnterior: string | null;
 		}[] = [];
 
 		for (const { iso, dow } of iterDates(2026, 1)) {
@@ -646,17 +670,18 @@ async function main() {
 			const diaConfig = jornada.dias[dow];
 			const pontos = gerarPontosDoDia(rng, iso, diaConfig, c.comportamento);
 			for (const p of pontos) {
-				const cadeia = elo({
-					colaboradorId: colaborador.id,
-					tipo: p.tipo,
+				const cadeia = ledger.eloBatida({
+					cpf: cpfDigitos,
 					marcadoEm: p.marcadoEm,
-					metodo: p.metodo
+					registradoEm: p.marcadoEm
 				});
 				registrosData.push({
 					colaboradorId: colaborador.id,
 					empresaId: empresa.id,
+					cpf: cpfDigitos,
 					tipo: p.tipo,
 					marcadoEm: p.marcadoEm,
+					registradoEm: p.marcadoEm,
 					metodo: p.metodo,
 					...cadeia
 				});
@@ -671,11 +696,18 @@ async function main() {
 
 	// Ajustes/lançamentos de exemplo no Carlos, para demonstrar a comparação no espelho.
 	const carlos = await prisma.colaborador.findFirst({
-		where: { usuario: { email: 'carlos@teste.com' } }
+		where: { usuario: { email: 'carlos@teste.com' } },
+		include: { usuario: { select: { cpf: true } } }
 	});
 	const demo = carlos
-		? await seedAjustesDemo(empresa.id, admin.id, carlos.id, elo)
+		? await seedAjustesDemo(empresa.id, admin.id, carlos.id, carlos.usuario.cpf, ledger)
 		: { ajustes: 0, manuais: 0 };
+
+	// Persiste o NSR final para a aplicação continuar a sequência a partir do seed.
+	await prisma.empresa.update({
+		where: { id: empresa.id },
+		data: { ultimoNsr: ledger.total }
+	});
 
 	console.log(
 		`✓ Seed concluído: 1 empresa, 2 jornadas, 1 admin, ${colaboradoresSeed.length} colaboradores, ${totalRegistros} pontos em Jan/2026.`

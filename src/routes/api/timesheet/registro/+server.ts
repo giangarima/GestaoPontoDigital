@@ -34,6 +34,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		criarRegistro(tx, {
 			colaboradorId: user.colaboradorId!,
 			empresaId: user.empresaId,
+			cpf: user.cpf,
 			tipo: body.type!,
 			metodo: 'manual'
 		})

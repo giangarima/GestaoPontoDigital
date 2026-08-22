@@ -13,7 +13,15 @@
 	let salvando = $state(false);
 	let errorMsg = $state('');
 
-	let form = $state({ nome: '', cnpj: '', horaAbertura: '', horaFechamento: '' });
+	let form = $state({
+		nome: '',
+		cnpj: '',
+		razaoSocial: '',
+		caepfCno: '',
+		localPrestacao: '',
+		horaAbertura: '',
+		horaFechamento: ''
+	});
 
 	async function loadEmpresa() {
 		const user = get(userStore);
@@ -22,6 +30,9 @@
 		form = {
 			nome: empresa.nome,
 			cnpj: empresa.cnpj ?? '',
+			razaoSocial: empresa.razaoSocial ?? '',
+			caepfCno: empresa.caepfCno ?? '',
+			localPrestacao: empresa.localPrestacao ?? '',
 			horaAbertura: empresa.horaAbertura,
 			horaFechamento: empresa.horaFechamento
 		};
@@ -35,11 +46,14 @@
 			empresa = await empresaService.update(empresa.id, {
 				nome: form.nome,
 				cnpj: form.cnpj || undefined,
+				razaoSocial: form.razaoSocial || undefined,
+				caepfCno: form.caepfCno || undefined,
+				localPrestacao: form.localPrestacao || undefined,
 				horaAbertura: form.horaAbertura,
 				horaFechamento: form.horaFechamento
 			});
-		} catch {
-			errorMsg = 'Erro ao salvar.';
+		} catch (e) {
+			errorMsg = e instanceof Error ? e.message : 'Erro ao salvar.';
 		} finally {
 			salvando = false;
 		}
@@ -59,7 +73,10 @@
 		<div class="card">
 			<h2>Dados e horários</h2>
 			<label>Nome<input bind:value={form.nome} /></label>
+			<label>Razão social<input bind:value={form.razaoSocial} /></label>
 			<label>CNPJ<input bind:value={form.cnpj} /></label>
+			<label>CAEPF/CNO<input bind:value={form.caepfCno} /></label>
+			<label>Local de prestação de serviços<input bind:value={form.localPrestacao} /></label>
 			<div class="row">
 				<label>Abertura<input type="time" bind:value={form.horaAbertura} /></label>
 				<label>Fechamento<input type="time" bind:value={form.horaFechamento} /></label>

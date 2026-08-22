@@ -49,7 +49,8 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const colaborador = await prisma.colaborador.findFirst({
-		where: { id: body.colaboradorId, deletedAt: null }
+		where: { id: body.colaboradorId, deletedAt: null },
+		include: { usuario: { select: { cpf: true } } }
 	});
 	if (!colaborador || colaborador.empresaId !== admin.empresaId) {
 		return jsonError('Colaborador não encontrado', 404);
@@ -59,6 +60,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		criarRegistro(tx, {
 			colaboradorId: colaborador.id,
 			empresaId: admin.empresaId,
+			cpf: colaborador.usuario.cpf,
 			tipo: body.type!,
 			marcadoEm: ts,
 			metodo: 'manual',

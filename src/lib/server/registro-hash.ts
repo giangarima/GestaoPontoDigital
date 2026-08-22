@@ -1,49 +1,45 @@
 /**
  * @module lib/server/registro-hash
- * @description Núcleo PURO da cadeia de integridade das batidas (sem Prisma).
+ * @description Hash SHA-256 do registro de marcação (AFD tipo 7, Portaria 671/2021),
+ * PURO (sem Prisma nem alias `@/`) para ser compartilhado pela aplicação e pelo seed.
  *
- * Isolado de `registro-ledger.ts` para poder ser importado tanto pela aplicação
- * (via alias `@/`) quanto pelo seed (`prisma/seed.ts`, rodado por `tsx` sem alias),
- * garantindo que a serialização canônica seja EXATAMENTE a mesma nos dois lados —
- * qualquer divergência invalidaria as cadeias já gravadas.
+ * O hash é calculado sobre os campos JÁ FORMATADOS do AFD, na ordem oficial, de
+ * modo que o valor gravado seja exatamente o campo 8 do registro tipo 7. Encadeia
+ * ao hash do registro (tipo 7) anterior — alterar uma batida antiga quebra a
+ * cadeia (detectável por `verificarCadeia`).
+ *
+ * IMPORTANTE: mudar `canonicalRegistro` invalida todas as cadeias já gravadas.
  */
 import { createHash } from 'node:crypto';
+import { padNum, toDH, COLETOR_BROWSER, MARCACAO_ONLINE } from './afd/format';
 
-/** Hash "genesis": ancora o primeiro elo da cadeia de cada empresa. */
-export const GENESIS_HASH = '0'.repeat(64);
-
-/** Campos que entram na assinatura de integridade de uma batida. */
+/** Campos do registro tipo 7 que entram no hash SHA-256. */
 export interface RegistroChainInput {
-	empresaId: string;
-	colaboradorId: string;
 	nsr: bigint;
-	tipo: string;
 	marcadoEm: Date;
-	metodo: string;
-	criadoPor?: string | null;
-	criadoMotivo?: string | null;
+	cpf: string;
+	registradoEm: Date;
 }
 
 /**
- * Serialização canônica: ordem fixa de campos, timestamp ISO UTC, nulos como "".
- * Precisa ser idêntica na criação e na verificação.
+ * Conteúdo canônico (campos formatados do AFD, ordem oficial) + hash do registro
+ * anterior (vazio no primeiro elo). Ordem: NSR, tipo "7", DH marcação, CPF,
+ * DH gravação, coletor, on/off-line, hash anterior.
  */
-export function canonicalRegistro(r: RegistroChainInput): string {
-	return [
-		r.empresaId,
-		r.colaboradorId,
-		r.nsr.toString(),
-		r.tipo,
-		r.marcadoEm.toISOString(),
-		r.metodo,
-		r.criadoPor ?? '',
-		r.criadoMotivo ?? ''
-	].join('|');
+export function canonicalRegistro(r: RegistroChainInput, hashAnterior: string | null): string {
+	return (
+		padNum(r.nsr, 9) +
+		'7' +
+		toDH(r.marcadoEm) +
+		padNum(r.cpf, 12) +
+		toDH(r.registradoEm) +
+		COLETOR_BROWSER +
+		MARCACAO_ONLINE +
+		(hashAnterior ?? '')
+	);
 }
 
-/** Hash de uma batida encadeado ao hash da anterior. */
-export function hashRegistro(r: RegistroChainInput, hashAnterior: string): string {
-	return createHash('sha256')
-		.update(`${hashAnterior}|${canonicalRegistro(r)}`)
-		.digest('hex');
+/** Hash SHA-256 (hex) do registro tipo 7, encadeado ao anterior. */
+export function hashRegistro(r: RegistroChainInput, hashAnterior: string | null): string {
+	return createHash('sha256').update(canonicalRegistro(r, hashAnterior), 'latin1').digest('hex');
 }

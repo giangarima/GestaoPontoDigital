@@ -9,6 +9,9 @@ export interface Empresa {
 	id: string;
 	nome: string;
 	cnpj: string | null;
+	razaoSocial: string | null;
+	caepfCno: string | null;
+	localPrestacao: string | null;
 	horaAbertura: string;
 	horaFechamento: string;
 	createdAt: string;
@@ -18,6 +21,9 @@ export interface Empresa {
 export interface EmpresaInput {
 	nome: string;
 	cnpj?: string;
+	razaoSocial?: string;
+	caepfCno?: string;
+	localPrestacao?: string;
 	horaAbertura: string;
 	horaFechamento: string;
 }

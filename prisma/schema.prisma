@@ -12,6 +12,13 @@ model Empresa {
   id             String   @id @default(cuid())
   nome           String
   cnpj           String?  @unique
+  // Dados cadastrais do empregador para o AFD (Portaria 671/2021).
+  razaoSocial    String?  @map("razao_social")
+  caepfCno       String?  @map("caepf_cno") // CAEPF ou CNO, quando existir
+  localPrestacao String?  @map("local_prestacao") // local de prestação de serviços (tipo 2)
+  // Contador da sequência de NSR do REP (por empresa/estabelecimento). Incrementado
+  // atomicamente a cada evento (batida tipo 7, empregador tipo 2, empregado tipo 5).
+  ultimoNsr      BigInt   @default(0) @map("ultimo_nsr")
   // Setting da empresa; `<input type="time">` no admin já garante o formato "HH:MM".
   // Mantido como String de propósito: `@db.Time` viraria Date (data fantasma) e
   // exigiria conversão frágil com timezone para um campo de baixo risco.
@@ -20,12 +27,14 @@ model Empresa {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  usuarios      Usuario[]
-  colaboradores Colaborador[]
-  jornadas      Jornada[]
-  departamentos Departamento[]
-  registros     Registro[]
-  ausencias     Ausencia[]
+  usuarios           Usuario[]
+  colaboradores      Colaborador[]
+  jornadas           Jornada[]
+  departamentos      Departamento[]
+  registros          Registro[]
+  ausencias          Ausencia[]
+  eventosEmpregador  EventoEmpregador[]
+  eventosEmpregado   EventoEmpregado[]
 
   @@map("empresas")
 }
@@ -150,6 +159,12 @@ model Registro {
   tipo              String // "entrada" | "saida_almoco" | "retorno_almoco" | "saida"
   marcadoEm         DateTime          @default(now()) @map("marcado_em") @db.Timestamptz(6)
   metodo            String // "manual"
+  // AFD tipo 7 (Portaria 671/2021): identificação e integridade da marcação.
+  // `cpf` = snapshot do CPF de quem bateu (congela a identidade: editar o CPF do
+  // usuário depois não reescreve o histórico nem quebra a cadeia de hash).
+  // `registradoEm` = data-hora da gravação (distinta de `marcadoEm` em batida retroativa).
+  cpf               String
+  registradoEm      DateTime          @default(now()) @map("registrado_em") @db.Timestamptz(6)
   nsr               BigInt            @map("nsr")
   hash              String
   hashAnterior      String?           @map("hash_anterior")
@@ -186,6 +201,48 @@ model RegistroAnulacao {
 
   @@index([empresaId])
   @@map("registro_anulacoes")
+}
+
+// Evento de inclusão/alteração do empregador no REP (AFD tipo 2). Append-only:
+// cada mudança cadastral relevante da empresa gera um novo evento com NSR próprio,
+// preservando o histórico exigido pela Portaria 671/2021.
+model EventoEmpregador {
+  id             String   @id @default(cuid())
+  empresaId      String   @map("empresa_id")
+  empresa        Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nsr            BigInt   @map("nsr")
+  registradoEm   DateTime @default(now()) @map("registrado_em") @db.Timestamptz(6)
+  cpfResponsavel String   @map("cpf_responsavel") // CPF do admin que fez a inclusão/alteração
+  inscricaoTipo  String   @map("inscricao_tipo") // "1" CNPJ | "2" CPF
+  inscricao      String // CNPJ ou CPF do empregador (só dígitos)
+  caepfCno       String?  @map("caepf_cno")
+  razaoSocial    String   @map("razao_social")
+  localPrestacao String?  @map("local_prestacao")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([empresaId, nsr])
+  @@index([empresaId, nsr])
+  @@map("eventos_empregador")
+}
+
+// Evento de inclusão/alteração/exclusão de empregado no REP (AFD tipo 5). Append-only,
+// com NSR próprio na mesma sequência das batidas. `operacao`: I | A | E.
+model EventoEmpregado {
+  id             String   @id @default(cuid())
+  empresaId      String   @map("empresa_id")
+  empresa        Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nsr            BigInt   @map("nsr")
+  registradoEm   DateTime @default(now()) @map("registrado_em") @db.Timestamptz(6)
+  operacao       String // "I" inclusão | "A" alteração | "E" exclusão
+  cpfEmpregado   String   @map("cpf_empregado")
+  nomeEmpregado  String   @map("nome_empregado")
+  cpfResponsavel String   @map("cpf_responsavel")
+  colaboradorId  String?  @map("colaborador_id") // vínculo lógico (não FK — sobrevive a exclusão)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([empresaId, nsr])
+  @@index([empresaId, nsr])
+  @@map("eventos_empregado")
 }
 
 // Ausência / afastamento — unifica férias, atestados e folgas sob um único

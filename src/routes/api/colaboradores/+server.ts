@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/server/db';
 import { toColaboradorDTO, emailEmUso, cpfEmUso, mapPrismaError } from '@/lib/server/colaborador';
+import { registrarEventoEmpregado } from '@/lib/server/registro-ledger';
 import { colaboradorCreateSchema } from '@/lib/schemas/colaborador.schema';
 import { encodeResetToken, buildResetUrl } from '@/lib/server/password-reset';
 import { sendWelcomeEmail } from '@/lib/server/mailer';
@@ -80,7 +81,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					role: 'colaborador'
 				}
 			});
-			return tx.colaborador.create({
+			const colab = await tx.colaborador.create({
 				data: {
 					usuarioId: usuario.id,
 					empresaId: admin.empresaId,
@@ -96,6 +97,16 @@ export const POST: RequestHandler = async ({ request }) => {
 					usuario: { select: { nome: true, email: true, cpf: true, senhaHash: true } }
 				}
 			});
+			// AFD tipo 5: evento de inclusão de empregado na cadeia de NSR.
+			await registrarEventoEmpregado(tx, {
+				empresaId: admin.empresaId,
+				operacao: 'I',
+				cpfEmpregado: data.cpf,
+				nomeEmpregado: data.nome,
+				cpfResponsavel: admin.cpf,
+				colaboradorId: colab.id
+			});
+			return colab;
 		});
 
 		// E-mail de boas-vindas com link para o colaborador definir a própria senha.
