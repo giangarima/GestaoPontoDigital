@@ -140,6 +140,38 @@
 		}
 	}
 
+	let baixandoAej = $state(false);
+	async function baixarAej() {
+		baixandoAej = true;
+		errorMsg = '';
+		try {
+			const mesRef = mes || mesDefault;
+			const [ano, mesNum] = mesRef.split('-');
+			const inicio = `${ano}-${mesNum}-01`;
+			const ultimoDia = new Date(Number(ano), Number(mesNum), 0).getDate();
+			const fim = `${ano}-${mesNum}-${String(ultimoDia).padStart(2, '0')}`;
+
+			const token = localStorage.getItem('auth_token');
+			const res = await fetch(`/api/relatorios/aej?inicio=${inicio}&fim=${fim}`, {
+				headers: token ? { Authorization: `Bearer ${token}` } : {}
+			});
+			if (!res.ok) throw new Error('Falha ao gerar o AEJ.');
+			const blob = await res.blob();
+			const disp = res.headers.get('Content-Disposition') ?? '';
+			const nome = disp.match(/filename="(.+?)"/)?.[1] ?? 'AEJ.txt';
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = nome;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			errorMsg = e instanceof Error ? e.message : 'Erro ao gerar o AEJ.';
+		} finally {
+			baixandoAej = false;
+		}
+	}
+
 	function initialsFromName(name: string): string {
 		return name
 			.split(' ')
@@ -177,6 +209,15 @@
 			>
 				<Icon name="download" size={13} />
 				{baixandoAfd ? 'Gerando…' : 'Baixar AFD'}
+			</button>
+			<button
+				class="export-btn"
+				onclick={baixarAej}
+				disabled={baixandoAej}
+				title="Arquivo Eletrônico de Jornada — Portaria 671/2021"
+			>
+				<Icon name="download" size={13} />
+				{baixandoAej ? 'Gerando…' : 'Baixar AEJ'}
 			</button>
 		</div>
 	</header>
