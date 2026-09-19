@@ -4,10 +4,14 @@
  * empresa do admin autenticado. Query opcional `inicio`/`fim` (YYYY-MM-DD) filtra
  * as marcações; eventos de empregador/empregado entram sempre (contexto do arquivo).
  *
- * Retorna texto (ISO-8859-1) como anexo — NÃO passa pelo api.ts (que só trata JSON).
+ * Retorna um .zip com o AFD (.txt, ISO-8859-1) e a assinatura CAdES destacada
+ * (.p7s). Sem certificado configurado, só o .txt (header `X-Assinatura: ausente`).
+ * NÃO passa pelo api.ts (que só trata JSON).
  */
 import type { RequestHandler } from '@sveltejs/kit';
 import { gerarAfd } from '@/lib/server/afd/gerar';
+import { carregarCredencial } from '@/lib/server/assinatura/certificado';
+import { empacotarAssinado, respostaDownload } from '@/lib/server/assinatura/pacote';
 import { requireAdmin, jsonError } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -20,21 +24,14 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
 	const inicioParam = url.searchParams.get('inicio');
 	const fimParam = url.searchParams.get('fim');
-	const inicio = inicioParam ? new Date(`${inicioParam}T00:00:00.000Z`) : undefined;
-	const fim = fimParam ? new Date(`${fimParam}T23:59:59.999Z`) : undefined;
+	// Dias inteiros no fuso de Brasília (o mesmo -0300 gravado nos campos do arquivo).
+	const inicio = inicioParam ? new Date(`${inicioParam}T00:00:00.000-03:00`) : undefined;
+	const fim = fimParam ? new Date(`${fimParam}T23:59:59.999-03:00`) : undefined;
 	if ((inicio && isNaN(inicio.getTime())) || (fim && isNaN(fim.getTime()))) {
 		return jsonError('inicio/fim inválidos (use YYYY-MM-DD)', 400);
 	}
 
 	const { conteudo, nome } = await gerarAfd(admin.empresaId, { inicio, fim });
 
-	// Cast: Uint8Array é um corpo válido em runtime; o tipo BodyInit do lib atual
-	// não aceita Uint8Array<ArrayBufferLike> (fricção conhecida do TS).
-	return new Response(conteudo as unknown as BodyInit, {
-		status: 200,
-		headers: {
-			'Content-Type': 'text/plain; charset=iso-8859-1',
-			'Content-Disposition': `attachment; filename="${nome}"`
-		}
-	});
+	return respostaDownload(empacotarAssinado(nome, conteudo, carregarCredencial()));
 };
