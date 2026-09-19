@@ -12,14 +12,15 @@ import {
 } from '@/lib/server/registro-ledger';
 import { baterPonto, criarColaborador, criarEmpresa, incluirPonto } from './fixtures';
 
-/** NSRs de todos os eventos da empresa (tipos 2, 5 e 7), ordenados. */
+/** NSRs de todos os eventos da empresa (tipos 2, 5, 6 e 7), ordenados. */
 async function todosNsrs(empresaId: string): Promise<number[]> {
-	const [regs, emp, empr] = await Promise.all([
+	const [regs, emp, empr, sens] = await Promise.all([
 		prisma.registro.findMany({ where: { empresaId, fonte: 'O' }, select: { nsr: true } }),
 		prisma.eventoEmpregado.findMany({ where: { empresaId }, select: { nsr: true } }),
-		prisma.eventoEmpregador.findMany({ where: { empresaId }, select: { nsr: true } })
+		prisma.eventoEmpregador.findMany({ where: { empresaId }, select: { nsr: true } }),
+		prisma.eventoSensivel.findMany({ where: { empresaId }, select: { nsr: true } })
 	]);
-	return [...regs, ...emp, ...empr].map((r) => Number(r.nsr)).sort((a, b) => a - b);
+	return [...regs, ...emp, ...empr, ...sens].map((r) => Number(r.nsr)).sort((a, b) => a - b);
 }
 
 function sequencia(n: number): number[] {

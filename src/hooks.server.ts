@@ -9,9 +9,30 @@
  *  - Bloquear rotas admin para colaboradores
  */
 
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
 import { redirect, json } from '@sveltejs/kit';
+import { building, dev } from '$app/environment';
 import { decodeToken } from '@/lib/server/token';
+import { prisma } from '@/lib/server/db';
+import { registrarInicioDoServidor, registrarParadaDoServidor } from '@/lib/server/disponibilidade';
+
+/**
+ * Disponibilidade do REP-P (AFD tipo 6): "07" ao iniciar e "08" no desligamento
+ * ordenado (adapter-node emite `sveltekit:shutdown` após SIGTERM/SIGINT). Só no
+ * servidor de produção — `vite dev` reinicia a toda hora e poluiria o AFD local.
+ */
+export const init: ServerInit = async () => {
+	if (dev || building) return;
+	await registrarInicioDoServidor().catch((e) =>
+		console.error('[rep] falha ao registrar disponibilidade', e)
+	);
+	process.once('sveltekit:shutdown', () => {
+		registrarParadaDoServidor()
+			.catch((e) => console.error('[rep] falha ao registrar indisponibilidade', e))
+			// Libera o pool do banco para o processo encerrar sem esperar o SIGKILL.
+			.finally(() => prisma.$disconnect());
+	});
+};
 
 // Rotas de API públicas (não exigem token)
 const PUBLIC_API_PATHS = [

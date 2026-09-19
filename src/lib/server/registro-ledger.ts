@@ -1,9 +1,9 @@
 /**
  * @module lib/server/registro-ledger
  * @description Cadeia unificada de NSR do REP (Portaria 671/2021) + hash-chain das
- * batidas. Todo evento do AFD — empregador (tipo 2), empregado (tipo 5) e marcação
- * (tipo 7) — recebe um NSR único por empresa, alocado atomicamente pelo contador
- * `Empresa.ultimoNsr`. O `UPDATE ... RETURNING` trava a linha da empresa até o
+ * batidas. Todo evento do AFD — empregador (tipo 2), empregado (tipo 5), evento
+ * sensível (tipo 6) e marcação (tipo 7) — recebe um NSR único por empresa,
+ * alocado atomicamente pelo contador `Empresa.ultimoNsr`. O `UPDATE ... RETURNING` trava a linha da empresa até o
  * commit, serializando a alocação e a leitura do elo anterior (sem forks).
  *
  * O encadeamento SHA-256 é só das batidas (tipo 7): `hashAnterior` aponta para o
@@ -178,6 +178,20 @@ export async function registrarEventoEmpregado(
 }
 
 /** Resultado da auditoria da cadeia de batidas de uma empresa. */
+/** Código do evento sensível do REP no AFD tipo 6 (os que se aplicam ao REP-P). */
+export type TipoEventoSensivel = '02' | '07' | '08';
+
+/** Evento sensível do REP (AFD tipo 6): consome o próximo NSR da empresa. */
+export async function registrarEventoSensivel(
+	tx: Prisma.TransactionClient,
+	data: { empresaId: string; tipoEvento: TipoEventoSensivel }
+) {
+	const nsr = await proximoNsr(tx, data.empresaId);
+	return tx.eventoSensivel.create({
+		data: { empresaId: data.empresaId, nsr, tipoEvento: data.tipoEvento }
+	});
+}
+
 export interface CadeiaResultado {
 	total: number;
 	valida: boolean;

@@ -82,6 +82,7 @@ async function nsrsAusentes(empresaId: string): Promise<{ total: number; primeir
 			SELECT nsr FROM registros WHERE empresa_id = ${empresaId} AND fonte = 'O'
 			UNION ALL SELECT nsr FROM eventos_empregador WHERE empresa_id = ${empresaId}
 			UNION ALL SELECT nsr FROM eventos_empregado WHERE empresa_id = ${empresaId}
+			UNION ALL SELECT nsr FROM eventos_sensiveis WHERE empresa_id = ${empresaId}
 		),
 		ausentes AS (
 			SELECT nsr FROM esperados EXCEPT SELECT nsr FROM existentes
