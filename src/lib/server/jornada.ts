@@ -158,10 +158,49 @@ function minutosDoHorario(hhmm: string): number {
 	return (h || 0) * 60 + (m || 0);
 }
 
-function horasDoDia(d: DiaSemanaDTO): number {
-	const manha = minutosDoHorario(d.saida_almoco) - minutosDoHorario(d.entrada);
-	const tarde = minutosDoHorario(d.saida) - minutosDoHorario(d.retorno_almoco);
-	return Math.max(0, (manha + tarde) / 60);
+/** Horário contratual de um dia: pares entrada/saída e duração total em minutos. */
+export interface HorarioContratual {
+	pares: [string, string][];
+	minutos: number;
+}
+
+/**
+ * Horário contratual de `dia` (AAAA-MM-dd) pela versão da jornada vigente nele.
+ * `null` = dia sem expediente (folga/DSR) ou colaborador sem jornada. Sem
+ * intervalo cadastrado, o dia é um par só (entrada → saída); par que vira a
+ * meia-noite (saída < entrada) conta +24h.
+ */
+export function horarioContratualDoDia(
+	versoes: VersaoVigencia[],
+	dia: string
+): HorarioContratual | null {
+	const data = new Date(`${dia}T00:00:00Z`);
+	const cfg = versaoVigenteEm(versoes, data)?.[DIAS_KEY[data.getUTCDay()]];
+	if (!cfg?.ativo || !cfg.entrada || !cfg.saida) return null;
+
+	const pares: [string, string][] =
+		cfg.saida_almoco && cfg.retorno_almoco
+			? [
+					[cfg.entrada, cfg.saida_almoco],
+					[cfg.retorno_almoco, cfg.saida]
+				]
+			: [[cfg.entrada, cfg.saida]];
+	const minutos = pares.reduce((total, [e, s]) => {
+		const diff = minutosDoHorario(s) - minutosDoHorario(e);
+		return total + (diff < 0 ? diff + 1440 : diff);
+	}, 0);
+	return { pares, minutos };
+}
+
+/**
+ * Minutos contratuais por dia para a apuração: 0 em folga/DSR; `null` quando o
+ * colaborador não tem jornada (não há contrato para medir extras/déficit).
+ */
+export function contratualPorDia(
+	versoes: VersaoVigencia[] | null | undefined
+): (dia: string) => number | null {
+	if (!versoes?.length) return () => null;
+	return (dia) => horarioContratualDoDia(versoes, dia)?.minutos ?? 0;
 }
 
 /**
@@ -176,12 +215,8 @@ export function calcularHorasEsperadasMes(
 	const ultimoDia = new Date(Date.UTC(ano, mesNum, 0)).getUTCDate();
 	let total = 0;
 	for (let d = 1; d <= ultimoDia; d++) {
-		const data = new Date(Date.UTC(ano, mesNum - 1, d));
-		const dias = versaoVigenteEm(versoes, data);
-		if (!dias) continue;
-		const dia = dias[DIAS_KEY[data.getUTCDay()]];
-		if (!dia?.ativo) continue;
-		total += horasDoDia(dia);
+		const dia = `${ano}-${String(mesNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+		total += horarioContratualDoDia(versoes, dia)?.minutos ?? 0;
 	}
-	return total;
+	return total / 60;
 }

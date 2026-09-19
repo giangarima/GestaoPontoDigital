@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
 import { calcularHorasEsperadasMes } from '@/lib/server/jornada';
+import { apurarPeriodo } from '@/lib/server/espelho/montar';
 import { ausenciaNoPeriodo, diasDoMes, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
@@ -33,7 +33,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			empresaId: admin.empresaId,
 			marcadoEm: instantesDoPeriodo(periodo.inicio, periodo.fim)
 		},
-		orderBy: { marcadoEm: 'asc' }
+		orderBy: { marcadoEm: 'asc' },
+		include: { anulacao: true } // desconsideradas não entram nas horas
 	});
 
 	// Ausências que tocam o mês (qualquer status). Aprovadas abonam o dia; a
@@ -52,13 +53,22 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		byUser.set(p.colaboradorId, list);
 	}
 
+	const agora = new Date();
+	const horas = (min: number) => Number((min / 60).toFixed(2));
+
 	const linhas = colaboradores.map((c) => {
 		const ausenciasColab = ausenciasMes.filter((a) => a.colaboradorId === c.id);
-		const datasAbonadas = ausenciaDateKeys(ausenciasColab.filter((a) => a.status === 'aprovada'));
-		const dias = buildDailySummaries(byUser.get(c.id) ?? [], datasAbonadas);
-		const horas = dias.reduce((acc, d) => acc + d.totalHours, 0);
-		const extras = dias.reduce((acc, d) => acc + d.overtime, 0);
-		const deficit = dias.reduce((acc, d) => acc + d.deficit, 0);
+		// Mesma apuração do espelho: inclui as faltas (déficit do dia inteiro).
+		const { totais } = apurarPeriodo({
+			inicio: periodo.inicio,
+			fim: periodo.fim,
+			emitidoEm: agora,
+			versoes: c.jornada?.versoes ?? [],
+			ausencias: ausenciasColab.filter((a) => a.status === 'aprovada'),
+			marcacoes: byUser.get(c.id) ?? [],
+			admissao: c.dataAdmissao,
+			desligamento: c.deletedAt
+		});
 		const ferias = ausenciasColab.filter((a) => a.tipo === 'ferias').length;
 		const faltasJustificadas = ausenciasColab.filter((a) => a.tipo !== 'ferias').length;
 		const horasEsperadas = c.jornada
@@ -68,11 +78,11 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		return {
 			colaboradorId: c.id,
 			colaboradorNome: c.usuario.nome,
-			diasTrabalhados: dias.filter((d) => d.totalHours > 0).length,
-			horas: Number(horas.toFixed(2)),
+			diasTrabalhados: totais.diasTrabalhados,
+			horas: horas(totais.realizadoMin),
 			horasEsperadas: Number(horasEsperadas.toFixed(2)),
-			extras: Number(extras.toFixed(2)),
-			deficit: Number(deficit.toFixed(2)),
+			extras: horas(totais.extraMin),
+			deficit: horas(totais.deficitMin),
 			periodosFerias: ferias,
 			faltasJustificadas
 		};

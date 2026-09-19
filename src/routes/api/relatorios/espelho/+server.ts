@@ -1,8 +1,17 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { prisma } from '@/lib/server/db';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
-import { ausenciaNoPeriodo, ehDia, instantesDoPeriodo } from '@/lib/server/periodo';
+import { contratualPorDia } from '@/lib/server/jornada';
+import { ehDia } from '@/lib/server/periodo';
+import { carregarEspelho } from '@/lib/server/espelho/gerar';
+import { montarEspelho, type TotaisEspelho } from '@/lib/server/espelho/montar';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
+
+const horas = (min: number) => Number((min / 60).toFixed(2));
+
+/** Totais no formato da API (horas decimais). */
+function totaisDTO(t: TotaisEspelho) {
+	return { horas: horas(t.realizadoMin), extras: horas(t.extraMin), deficit: horas(t.deficitMin) };
+}
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	let admin;
@@ -19,41 +28,27 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	if (!colaboradorId || !inicio || !fim) {
 		return jsonError('colaboradorId, inicio e fim são obrigatórios', 400);
 	}
-
-	const colaborador = await prisma.colaborador.findUnique({
-		where: { id: colaboradorId },
-		include: { usuario: { select: { nome: true } } }
-	});
-	if (!colaborador || colaborador.empresaId !== admin.empresaId) {
-		return jsonError('Colaborador não encontrado', 404);
-	}
-
 	if (!ehDia(inicio) || !ehDia(fim)) {
 		return jsonError('Datas inválidas', 400);
 	}
 
-	const [registros, ausencias] = await Promise.all([
-		prisma.registro.findMany({
-			where: { colaboradorId, marcadoEm: instantesDoPeriodo(inicio, fim) },
-			orderBy: { marcadoEm: 'asc' },
-			include: { anulacao: true }
-		}),
-		prisma.ausencia.findMany({
-			where: {
-				colaboradorId,
-				empresaId: admin.empresaId,
-				status: 'aprovada',
-				...ausenciaNoPeriodo(inicio, fim)
-			}
-		})
-	]);
+	const carga = await carregarEspelho(admin.empresaId, colaboradorId, inicio, fim);
+	if (!carga) {
+		return jsonError('Colaborador não encontrado', 404);
+	}
+	const { colaborador, registros, entrada } = carga;
 
-	const datasAbonadas = ausenciaDateKeys(ausencias);
-
-	// Estado efetivo (com ajustes do admin) e estado original (só marcações do
-	// colaborador, fonte "O") — ambos a partir dos mesmos registros.
-	const diasEfetivos = buildDailySummaries(registros, datasAbonadas);
-	const diasOriginais = buildDailySummaries(registros, datasAbonadas, (p) => p.fonte === 'O');
+	// Estado efetivo (com o tratamento do admin) e estado original (só as
+	// marcações do REP, fonte "O") — ambos a partir dos mesmos registros.
+	const opcoes = {
+		datasAbonadas: ausenciaDateKeys(entrada.ausencias),
+		contratualMin: contratualPorDia(entrada.versoes)
+	};
+	const diasEfetivos = buildDailySummaries(registros, opcoes);
+	const diasOriginais = buildDailySummaries(registros, {
+		...opcoes,
+		isValida: (p) => p.fonte === 'O'
+	});
 	const origPorData = new Map(diasOriginais.map((d) => [d.date, d]));
 
 	const dias = diasEfetivos.map((d) => {
@@ -68,20 +63,15 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		};
 	});
 
-	const somar = (lista: { totalHours: number; overtime: number; deficit: number }[]) => ({
-		horas: Number(lista.reduce((acc, d) => acc + d.totalHours, 0).toFixed(2)),
-		extras: Number(lista.reduce((acc, d) => acc + d.overtime, 0).toFixed(2)),
-		deficit: Number(lista.reduce((acc, d) => acc + d.deficit, 0).toFixed(2))
-	});
-
+	// Totais pelo mesmo cálculo do espelho em PDF (incluem as faltas do período).
 	return jsonOk({
 		colaborador: { id: colaborador.id, nome: colaborador.usuario.nome },
 		inicio,
 		fim,
 		dias,
 		totais: {
-			...somar(diasEfetivos),
-			original: somar(diasOriginais)
+			...totaisDTO(montarEspelho(entrada).totais),
+			original: totaisDTO(montarEspelho(entrada, { visao: 'original' }).totais)
 		}
 	});
 };

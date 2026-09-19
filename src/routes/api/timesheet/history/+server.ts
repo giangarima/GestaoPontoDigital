@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
 import { ausenciaNoPeriodo, ehDia, instantesDoPeriodo } from '@/lib/server/periodo';
+import { contratualPorDia } from '@/lib/server/jornada';
 import { requireUser, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -29,7 +30,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 	const colaboradorId = user.colaboradorId;
 
-	const [registros, ausencias] = await Promise.all([
+	const [registros, ausencias, colaborador] = await Promise.all([
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(startDate, endDate) },
 			orderBy: { marcadoEm: 'asc' },
@@ -41,9 +42,18 @@ export const GET: RequestHandler = async ({ request, url }) => {
 				status: 'aprovada',
 				...ausenciaNoPeriodo(startDate, endDate)
 			}
+		}),
+		prisma.colaborador.findUnique({
+			where: { id: colaboradorId },
+			select: { jornada: { select: { versoes: true } } }
 		})
 	]);
 
 	const datasAbonadas = ausenciaDateKeys(ausencias);
-	return jsonOk(buildDailySummaries(registros, datasAbonadas));
+	return jsonOk(
+		buildDailySummaries(registros, {
+			datasAbonadas,
+			contratualMin: contratualPorDia(colaborador?.jornada?.versoes)
+		})
+	);
 };

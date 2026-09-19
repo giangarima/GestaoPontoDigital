@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { buildDailySummaries } from '@/lib/server/timesheet';
 import { versaoVigenteEm } from '@/lib/server/jornada';
+import { apurarPeriodo } from '@/lib/server/espelho/montar';
 import {
 	ausenciaNoPeriodo,
 	dataPura,
@@ -69,7 +69,23 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
 	const registrosMes = await prisma.registro.findMany({
 		where: { empresaId, marcadoEm: instantesDoPeriodo(mes.inicio, mes.fim) },
-		orderBy: { marcadoEm: 'asc' }
+		orderBy: { marcadoEm: 'asc' },
+		include: { anulacao: true } // desconsideradas não entram nas horas
+	});
+
+	const colaboradores = await prisma.colaborador.findMany({
+		where: { empresaId, deletedAt: null },
+		select: {
+			id: true,
+			usuario: { select: { nome: true } },
+			status: true,
+			dataAdmissao: true,
+			jornada: { select: { versoes: { select: { vigenciaInicio: true, dias: true } } } }
+		}
+	});
+
+	const ausenciasAprovadasMes = await prisma.ausencia.findMany({
+		where: { empresaId, status: 'aprovada', ...ausenciaNoPeriodo(mes.inicio, mes.fim) }
 	});
 
 	// Index por usuário
@@ -85,17 +101,24 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	const extrasPorUser = new Map<string, number>();
 	const deficitPorUser = new Map<string, number>();
 
-	for (const [userId, list] of registrosPorColaborador.entries()) {
-		const sumarios = buildDailySummaries(list);
-		let extrasUser = 0;
-		let deficitUser = 0;
-		for (const s of sumarios) {
-			extrasPorDia.set(s.date, (extrasPorDia.get(s.date) ?? 0) + s.overtime);
-			extrasUser += s.overtime;
-			deficitUser += s.deficit;
+	// Mesma apuração do espelho e do consolidado (inclui as faltas no déficit).
+	const agora = new Date();
+	for (const c of colaboradores) {
+		const { dias, totais } = apurarPeriodo({
+			inicio: mes.inicio,
+			fim: mes.fim,
+			emitidoEm: agora,
+			versoes: c.jornada?.versoes ?? [],
+			ausencias: ausenciasAprovadasMes.filter((a) => a.colaboradorId === c.id),
+			marcacoes: registrosPorColaborador.get(c.id) ?? [],
+			admissao: c.dataAdmissao,
+			desligamento: null
+		});
+		for (const d of dias) {
+			if (d.extraMin > 0) extrasPorDia.set(d.dia, (extrasPorDia.get(d.dia) ?? 0) + d.extraMin / 60);
 		}
-		extrasPorUser.set(userId, extrasUser);
-		deficitPorUser.set(userId, deficitUser);
+		extrasPorUser.set(c.id, totais.extraMin / 60);
+		deficitPorUser.set(c.id, totais.deficitMin / 60);
 	}
 
 	const horasExtrasMes = Array.from(extrasPorUser.values()).reduce((a, b) => a + b, 0);
@@ -113,16 +136,6 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 
 	// ── Top 5 horas extras no mês ──────────────────────────────────────────────
-	const colaboradores = await prisma.colaborador.findMany({
-		where: { empresaId, deletedAt: null },
-		select: {
-			id: true,
-			usuario: { select: { nome: true } },
-			status: true,
-			jornada: { select: { versoes: { select: { vigenciaInicio: true, dias: true } } } }
-		}
-	});
-
 	const topExtras = [...extrasPorUser.entries()]
 		.map(([userId, horas]) => {
 			const c = colaboradores.find((x) => x.id === userId);
