@@ -11,7 +11,7 @@ import { unzipSync } from 'fflate';
 import forge from 'node-forge';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { assinarCades, type Credencial } from './cades';
-import { lerP12 } from './certificado';
+import { lerCertificadoP12, lerP12 } from './certificado';
 import { empacotarAssinado } from './pacote';
 
 const temOpenssl = spawnSync('openssl', ['version']).status === 0;
@@ -155,6 +155,37 @@ describe('lerP12', () => {
 
 	it('senha errada falha', () => {
 		expect(() => lerP12(p12('dev123'), 'errada')).toThrow();
+	});
+
+	describe('lerCertificadoP12 (origem do .p12)', () => {
+		it('lê o base64 da variável de ambiente, tolerando quebras de linha', () => {
+			const original = p12('dev123');
+			const comQuebras = original.toString('base64').replace(/(.{64})/g, '$1\n');
+			const lido = lerCertificadoP12({ COMPROVANTE_CERT_BASE64: comQuebras });
+			expect(lido?.equals(original)).toBe(true);
+			expect(lerP12(lido!, 'dev123').certificadoDer.equals(cert.credencial.certificadoDer)).toBe(
+				true
+			);
+		});
+
+		it('base64 tem prioridade sobre o caminho do arquivo', () => {
+			const original = p12('dev123');
+			const lido = lerCertificadoP12({
+				COMPROVANTE_CERT_BASE64: original.toString('base64'),
+				COMPROVANTE_CERT_PATH: '/nao/existe.p12'
+			});
+			expect(lido?.equals(original)).toBe(true);
+		});
+
+		it('sem base64, lê o arquivo do caminho', () => {
+			const arquivo = path.join(dir, 'rep.p12');
+			writeFileSync(arquivo, p12('dev123'));
+			expect(lerCertificadoP12({ COMPROVANTE_CERT_PATH: arquivo })?.length).toBeGreaterThan(0);
+		});
+
+		it('sem base64 e sem arquivo: null', () => {
+			expect(lerCertificadoP12({ COMPROVANTE_CERT_PATH: '/nao/existe.p12' })).toBeNull();
+		});
 	});
 });
 

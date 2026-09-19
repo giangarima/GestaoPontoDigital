@@ -1,13 +1,19 @@
 /**
  * @module lib/server/assinatura/certificado
- * @description Carrega a credencial de assinatura do REP (arquivo `.p12`/PFX) —
- * a mesma usada no comprovante de marcação (`COMPROVANTE_CERT_PATH` /
- * `COMPROVANTE_CERT_PASS`). Em produção deve ser um certificado ICP-Brasil do
- * empregador; em dev, o autoassinado de `npm run generate:cert`.
+ * @description Carrega a credencial de assinatura do REP (`.p12`/PFX) — a mesma
+ * do comprovante de marcação (PDF) e do `.p7s` do AFD/AEJ. Em produção deve ser
+ * um certificado ICP-Brasil (e-CNPJ A1) do empregador; em dev, o autoassinado de
+ * `npm run generate:cert`.
  *
- * Retorna `null` (sem lançar) quando a assinatura está desligada
- * (`COMPROVANTE_SKIP_SIGN=true`) ou o arquivo não existe, para o chamador
- * decidir o fallback. Lido uma vez e mantido em cache.
+ * Origem do `.p12`, em ordem de prioridade:
+ * 1. `COMPROVANTE_CERT_BASE64` — o arquivo em base64 numa variável de ambiente
+ *    (hospedagens como o Render só aceitam segredos em texto);
+ * 2. `COMPROVANTE_CERT_PATH` — caminho do arquivo (default `certs/rep-dev.p12`).
+ * Senha em `COMPROVANTE_CERT_PASS`.
+ *
+ * `carregarCredencial` retorna `null` (sem lançar) quando a assinatura está
+ * desligada (`COMPROVANTE_SKIP_SIGN=true`) ou não há certificado, para o
+ * chamador decidir o fallback. Lido uma vez e mantido em cache.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -49,16 +55,22 @@ export function lerP12(p12: Buffer, senha: string): Credencial {
 	};
 }
 
+/**
+ * Bytes do `.p12` configurado (base64 na env ou arquivo), ou `null` se não houver.
+ * Não olha `COMPROVANTE_SKIP_SIGN` — isso é decisão de cada chamador.
+ */
+export function lerCertificadoP12(env: NodeJS.ProcessEnv = process.env): Buffer | null {
+	const base64 = env.COMPROVANTE_CERT_BASE64?.replace(/\s/g, '');
+	if (base64) return Buffer.from(base64, 'base64');
+
+	const caminho = env.COMPROVANTE_CERT_PATH || path.resolve(process.cwd(), 'certs', 'rep-dev.p12');
+	return existsSync(caminho) ? readFileSync(caminho) : null;
+}
+
 export function carregarCredencial(): Credencial | null {
 	if (cache !== undefined) return cache;
 
-	const caminho =
-		process.env.COMPROVANTE_CERT_PATH || path.resolve(process.cwd(), 'certs', 'rep-dev.p12');
-	if (process.env.COMPROVANTE_SKIP_SIGN === 'true' || !existsSync(caminho)) {
-		cache = null;
-		return cache;
-	}
-
-	cache = lerP12(readFileSync(caminho), process.env.COMPROVANTE_CERT_PASS ?? '');
+	const p12 = process.env.COMPROVANTE_SKIP_SIGN === 'true' ? null : lerCertificadoP12();
+	cache = p12 ? lerP12(p12, process.env.COMPROVANTE_CERT_PASS ?? '') : null;
 	return cache;
 }
