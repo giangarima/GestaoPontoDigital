@@ -489,6 +489,7 @@ async function main() {
 
 	await prisma.ausencia.deleteMany();
 	await prisma.eventoEmpregado.deleteMany();
+	await prisma.eventoSensivel.deleteMany();
 	await prisma.eventoEmpregador.deleteMany();
 	await prisma.registroAnulacao.deleteMany();
 	// Comprovante referencia a marcação com onDelete: Restrict — sai antes dela.

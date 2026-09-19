@@ -2,8 +2,8 @@
  * @module lib/server/afd/gerar
  * @description Geração do AFD (Arquivo Fonte de Dados) da Portaria 671/2021 para
  * REP-P, no leiaute oficial (Anexo). Monta um diário sequencial por NSR unindo
- * cabeçalho (tipo 1), empregador (tipo 2), empregado (tipo 5), marcações (tipo 7)
- * e trailer (tipo 9), mais a linha de assinatura. Linhas terminam em CRLF e o
+ * cabeçalho (tipo 1), empregador (tipo 2), empregado (tipo 5), eventos sensíveis
+ * (tipo 6), marcações (tipo 7) e trailer (tipo 9), mais a linha de assinatura. Linhas terminam em CRLF e o
  * arquivo é codificado em ISO-8859-1.
  */
 import { prisma } from '@/lib/server/db';
@@ -61,9 +61,25 @@ export async function gerarAfd(empresaId: string, range: AfdRange = {}): Promise
 				}
 			: {};
 
-	const [eventosEmpregador, eventosEmpregado, batidas] = await Promise.all([
+	// Eventos sensíveis (tipo 6) são ocorrências no tempo, como as batidas: seguem o
+	// filtro de período (pela data de gravação). Cadastros (tipos 2 e 5) saem sempre.
+	const filtroGravado =
+		range.inicio || range.fim
+			? {
+					registradoEm: {
+						...(range.inicio ? { gte: range.inicio } : {}),
+						...(range.fim ? { lte: range.fim } : {})
+					}
+				}
+			: {};
+
+	const [eventosEmpregador, eventosEmpregado, eventosSensiveis, batidas] = await Promise.all([
 		prisma.eventoEmpregador.findMany({ where: { empresaId }, orderBy: { nsr: 'asc' } }),
 		prisma.eventoEmpregado.findMany({ where: { empresaId }, orderBy: { nsr: 'asc' } }),
+		prisma.eventoSensivel.findMany({
+			where: { empresaId, ...filtroGravado },
+			orderBy: { nsr: 'asc' }
+		}),
 		// Só marcações originais do REP: inclusões do tratamento (fonte 'I') vão só no AEJ.
 		prisma.registro.findMany({
 			where: { empresaId, fonte: 'O', ...filtroMarcado },
@@ -132,6 +148,14 @@ export async function gerarAfd(empresaId: string, range: AfdRange = {}): Promise
 		});
 	}
 
+	// Tipo 6 — 36 posições, sem CRC (o leiaute exige CRC só nos tipos 1 a 5).
+	for (const e of eventosSensiveis) {
+		linhas.push({
+			nsr: e.nsr,
+			texto: padNum(e.nsr, 9) + '6' + toDH(e.registradoEm) + padNum(e.tipoEvento, 2)
+		});
+	}
+
 	for (const b of batidas) {
 		// Garantido pelo CHECK registros_fonte_check; falhar aqui é melhor que um AFD torto.
 		if (b.nsr === null || b.hash === null) {
@@ -161,7 +185,7 @@ export async function gerarAfd(empresaId: string, range: AfdRange = {}): Promise
 		padNum(0, 9) + // tipo 3
 		padNum(0, 9) + // tipo 4
 		padNum(eventosEmpregado.length, 9) + // tipo 5
-		padNum(0, 9) + // tipo 6
+		padNum(eventosSensiveis.length, 9) + // tipo 6
 		padNum(batidas.length, 9) + // tipo 7
 		'9';
 
