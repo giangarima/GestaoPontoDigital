@@ -1,3 +1,4 @@
+import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { requireUser, jsonOk, jsonError } from '../../_lib/auth-helpers';
 import { formatNsr } from '@/lib/server/nsr';
@@ -11,7 +12,7 @@ type ComprovanteListRow = {
 	caminhoArquivo: string;
 };
 
-export async function GET(request: Request) {
+export const GET: RequestHandler = async ({ request, url }) => {
 	try {
 		const user = requireUser(request);
 		const empresaId = user.empresaId;
@@ -20,7 +21,6 @@ export async function GET(request: Request) {
 			colaboradorId = user.colaboradorId as string;
 			if (!colaboradorId) return jsonError('Usuário não é colaborador', 403);
 		} else {
-			const url = new URL(request.url);
 			colaboradorId = url.searchParams.get('colaboradorId');
 			if (!colaboradorId) return jsonError('colaboradorId é obrigatório para admin', 400);
 		}
@@ -50,8 +50,7 @@ export async function GET(request: Request) {
 
 		return jsonOk(list);
 	} catch (error: unknown) {
+		if (error instanceof Response) return error;
 		return jsonError(error instanceof Error ? error.message : 'Erro', 500);
 	}
-}
-
-export default { GET };
+};

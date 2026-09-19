@@ -1,3 +1,4 @@
+import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { requireUser, jsonError } from '../../../_lib/auth-helpers';
 import { lerComprovantePdf } from '@/lib/server/comprovante/storage';
@@ -11,7 +12,7 @@ type ComprovanteDetalhe = {
 	caminhoArquivo: string;
 };
 
-export async function GET(request: Request, { params }: { params: { registroId: string } }) {
+export const GET: RequestHandler = async ({ request, params }) => {
 	try {
 		const user = requireUser(request);
 		const registroId = params.registroId;
@@ -35,8 +36,7 @@ export async function GET(request: Request, { params }: { params: { registroId: 
 			}
 		});
 	} catch (error: unknown) {
+		if (error instanceof Response) return error;
 		return jsonError(error instanceof Error ? error.message : 'Erro', 500);
 	}
-}
-
-export default { GET };
+};
