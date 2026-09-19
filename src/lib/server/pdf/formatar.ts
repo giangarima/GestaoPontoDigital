@@ -49,3 +49,24 @@ export function inscricaoBr(v: string | null | undefined): string {
 	if (d.length === 11) return cpfBr(d);
 	return d || '-';
 }
+
+/** Quebra `texto` em linhas que caibam em `largura` (pt) na fonte e tamanho dados. */
+export function quebrarTexto(
+	texto: string,
+	fonte: { widthOfTextAtSize(texto: string, tamanho: number): number },
+	tamanho: number,
+	largura: number
+): string[] {
+	const linhas: string[] = [];
+	let atual = '';
+	for (const palavra of seguro(texto).split(/\s+/).filter(Boolean)) {
+		const tentativa = atual ? `${atual} ${palavra}` : palavra;
+		if (!atual || fonte.widthOfTextAtSize(tentativa, tamanho) <= largura) atual = tentativa;
+		else {
+			linhas.push(atual);
+			atual = palavra;
+		}
+	}
+	if (atual) linhas.push(atual);
+	return linhas;
+}
