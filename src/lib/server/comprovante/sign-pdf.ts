@@ -1,8 +1,7 @@
-import fs from 'fs';
-import path from 'path';
 import { createHash } from 'crypto';
 import { SignPdf } from '@signpdf/signpdf';
 import { P12Signer } from '@signpdf/signer-p12';
+import { lerCertificadoP12 } from '@/lib/server/assinatura/certificado';
 
 export interface SignPdfResult {
 	buffer: Buffer;
@@ -17,11 +16,14 @@ export async function signPdf(pdfBuffer: Buffer): Promise<SignPdfResult> {
 		return { buffer: pdfBuffer, hashSha256: hash, assinadoEm: new Date() };
 	}
 
-	const certPath =
-		process.env.COMPROVANTE_CERT_PATH || path.resolve(process.cwd(), 'certs', 'rep-dev.p12');
+	const p12 = lerCertificadoP12();
+	if (!p12) {
+		throw new Error(
+			'Certificado do REP não configurado (COMPROVANTE_CERT_BASE64 ou COMPROVANTE_CERT_PATH)'
+		);
+	}
 	const certPass = process.env.COMPROVANTE_CERT_PASS ?? '';
 
-	const p12 = fs.readFileSync(certPath);
 	const signer = new P12Signer(p12, { passphrase: certPass });
 	const signpdf = new SignPdf();
 
