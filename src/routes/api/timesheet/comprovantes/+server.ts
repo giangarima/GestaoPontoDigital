@@ -1,56 +1,58 @@
+/**
+ * @endpoint GET /api/timesheet/comprovantes
+ * @description Comprovantes das marcações originais (fonte "O") das últimas 48
+ * horas (Portaria 671/2021, art. 80, parágrafo único, III). Sem parâmetro, lista
+ * os do próprio usuário com vínculo de colaborador; admin pode passar
+ * `colaboradorId` de alguém da empresa.
+ */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { requireUser, jsonOk, jsonError } from '../../_lib/auth-helpers';
 import { formatNsr } from '@/lib/server/nsr';
+import { requireUser, jsonOk, jsonError } from '../../_lib/auth-helpers';
 
-type ComprovanteListRow = {
-	registroId: string;
-	nsr: bigint;
-	geradoEm: Date;
-	enviadoEm: Date | null;
-	envioStatus: string;
-	caminhoArquivo: string;
-};
+const JANELA_MS = 48 * 3600 * 1000;
 
 export const GET: RequestHandler = async ({ request, url }) => {
+	let user;
 	try {
-		const user = requireUser(request);
-		const empresaId = user.empresaId;
-		let colaboradorId: string | null = null;
-		if (user.role === 'colaborador') {
-			colaboradorId = user.colaboradorId as string;
-			if (!colaboradorId) return jsonError('Usuário não é colaborador', 403);
-		} else {
-			colaboradorId = url.searchParams.get('colaboradorId');
-			if (!colaboradorId) return jsonError('colaboradorId é obrigatório para admin', 400);
-		}
-
-		const since = new Date(Date.now() - 48 * 3600 * 1000);
-		const rows = (await prisma.comprovante.findMany({
-			where: { empresaId, colaboradorId, geradoEm: { gte: since } },
-			orderBy: { geradoEm: 'desc' },
-			select: {
-				registroId: true,
-				nsr: true,
-				geradoEm: true,
-				enviadoEm: true,
-				envioStatus: true,
-				caminhoArquivo: true
-			}
-		})) as ComprovanteListRow[];
-
-		const list = rows.map((r) => ({
-			registroId: r.registroId,
-			nsr: formatNsr(r.nsr),
-			geradoEm: r.geradoEm.toISOString(),
-			enviadoEm: r.enviadoEm?.toISOString() ?? null,
-			envioStatus: r.envioStatus,
-			downloadUrl: `/api/timesheet/comprovantes/${r.registroId}`
-		}));
-
-		return jsonOk(list);
-	} catch (error: unknown) {
-		if (error instanceof Response) return error;
-		return jsonError(error instanceof Error ? error.message : 'Erro', 500);
+		user = requireUser(request);
+	} catch (response) {
+		return response as Response;
 	}
+
+	const pedido = url.searchParams.get('colaboradorId');
+	const colaboradorId = pedido ?? user.colaboradorId;
+	if (!colaboradorId) return jsonError('colaboradorId é obrigatório', 400);
+	if (pedido && pedido !== user.colaboradorId && user.role !== 'admin') {
+		return jsonError('Acesso negado', 403);
+	}
+
+	const registros = await prisma.registro.findMany({
+		where: {
+			empresaId: user.empresaId,
+			colaboradorId,
+			fonte: 'O',
+			marcadoEm: { gte: new Date(Date.now() - JANELA_MS) }
+		},
+		orderBy: { marcadoEm: 'desc' },
+		select: {
+			id: true,
+			tipo: true,
+			nsr: true,
+			marcadoEm: true,
+			comprovante: { select: { envioStatus: true, enviadoEm: true } }
+		}
+	});
+
+	return jsonOk(
+		registros.map((r) => ({
+			registroId: r.id,
+			tipo: r.tipo,
+			nsr: formatNsr(r.nsr!),
+			marcadoEm: r.marcadoEm.toISOString(),
+			envioStatus: r.comprovante?.envioStatus ?? null,
+			enviadoEm: r.comprovante?.enviadoEm?.toISOString() ?? null,
+			downloadUrl: `/api/timesheet/comprovantes/${r.id}`
+		}))
+	);
 };

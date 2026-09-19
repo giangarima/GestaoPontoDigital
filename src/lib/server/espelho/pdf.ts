@@ -1,14 +1,21 @@
 /**
  * @module lib/server/espelho/pdf
  * @description Desenha o Espelho de Ponto Eletrônico (art. 84 da Portaria
- * 671/2021) em PDF A4 com pdf-lib — JS puro, sem navegador headless (o
- * Puppeteer do comprovante depende do Chrome instalado no servidor).
+ * 671/2021) em PDF A4 com pdf-lib — JS puro, sem navegador headless.
  *
  * Devolve o `PDFDocument` ainda aberto para o chamador poder incluir o
  * placeholder da assinatura PAdES antes de salvar (ver `gerar.ts`).
  */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { toDH } from '@/lib/server/afd/format';
+import {
+	cpfBr,
+	dataBr,
+	dataHoraBr,
+	horaBr as hora,
+	inscricaoBr,
+	seguro
+} from '@/lib/server/pdf/formatar';
 import { PTRP_NOME, PTRP_VERSAO } from '@/lib/server/afd/config';
 import type { DiaEspelho, Espelho } from './montar';
 
@@ -25,51 +32,10 @@ const PRETO = rgb(0, 0, 0);
 
 // ── Formatação ───────────────────────────────────────────────────────────────
 
-/**
- * Deixa o texto desenhável com as fontes padrão (WinAnsi): pontuação
- * tipográfica vira ASCII e o que sobrar fora do Latin-1 vira "?".
- */
-function seguro(s: string): string {
-	return s
-		.replace(/[\u2013\u2014]/g, '-')
-		.replace(/[\u2018\u2019]/g, "'")
-		.replace(/[\u201C\u201D]/g, '"')
-		.replace(/\u2026/g, '...')
-		.replace(/[^\u0020-\u007E\u00A0-\u00FF]/g, '?');
-}
-
-function dataBr(dia: string): string {
-	const [a, m, d] = dia.split('-');
-	return `${d}/${m}/${a}`;
-}
-
-/** "dd/mm/aaaa hh:mm" em Brasília. */
-function dataHoraBr(instante: Date): string {
-	const dh = toDH(instante); // AAAA-MM-ddThh:mm:00-0300
-	return `${dataBr(dh.slice(0, 10))} ${dh.slice(11, 16)}`;
-}
-
-function hora(instante: Date): string {
-	return toDH(instante).slice(11, 16);
-}
-
 /** Minutos → "h:mm" ("" quando zero, para a tabela ficar limpa). */
 function hm(min: number, zero = ''): string {
 	if (min === 0) return zero;
 	return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
-}
-
-function cpfBr(cpf: string): string {
-	const d = cpf.replace(/\D/g, '').padStart(11, '0');
-	return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
-
-function inscricaoBr(v: string | null): string {
-	const d = (v ?? '').replace(/\D/g, '');
-	if (d.length === 14)
-		return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-	if (d.length === 11) return cpfBr(d);
-	return d || '-';
 }
 
 function marcacaoTexto(m: DiaEspelho['marcacoes'][number]): string {

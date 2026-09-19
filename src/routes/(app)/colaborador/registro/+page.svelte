@@ -8,8 +8,8 @@
 	import Card from '@/components/ui/Card.svelte';
 	import Icon from '@/components/ui/Icon.svelte';
 	import { timesheetService } from '@/services/timesheet.service';
-	import type { RegistroType, DailySummary } from '@/services/timesheet.service';
-	import { formatTime, diffInMinutes } from '@/utils/date';
+	import type { RegistroType, DailySummary, ComprovanteItem } from '@/services/timesheet.service';
+	import { formatDate, formatTime, diffInMinutes } from '@/utils/date';
 
 	const REGISTRO_LABELS: Record<RegistroType, string> = {
 		entrada: 'Entrada',
@@ -65,6 +65,30 @@
 		}
 	}
 
+	// Comprovantes das últimas 48h (Portaria 671/2021, art. 80, parágrafo único).
+	let comprovantes = $state<ComprovanteItem[]>([]);
+	let baixandoComprovante = $state<string | null>(null);
+
+	async function loadComprovantes(): Promise<void> {
+		try {
+			comprovantes = await timesheetService.comprovantes();
+		} catch {
+			comprovantes = [];
+		}
+	}
+
+	async function baixarComprovante(registroId: string): Promise<void> {
+		baixandoComprovante = registroId;
+		errorMsg = '';
+		try {
+			await timesheetService.baixarComprovante(registroId);
+		} catch {
+			errorMsg = 'Erro ao baixar o comprovante.';
+		} finally {
+			baixandoComprovante = null;
+		}
+	}
+
 	async function handleRegistrar(): Promise<void> {
 		const type = nextRegistroType;
 		if (!type) return;
@@ -75,7 +99,7 @@
 			await timesheetService.registrar({ type, method: 'manual' });
 			lastSuccess = REGISTRO_LABELS[type];
 			setTimeout(() => (lastSuccess = ''), 3000);
-			await loadToday();
+			await Promise.all([loadToday(), loadComprovantes()]);
 		} catch {
 			errorMsg = 'Erro ao registrar ponto.';
 		} finally {
@@ -85,6 +109,7 @@
 
 	onMount(() => {
 		loadToday();
+		loadComprovantes();
 		const timer = setInterval(() => (now = new Date()), 1000);
 		return () => clearInterval(timer);
 	});
@@ -187,6 +212,33 @@
 		</Card>
 	{:else if loading}
 		<p class="empty">Carregando...</p>
+	{/if}
+
+	{#if comprovantes.length > 0}
+		<Card>
+			<h2 class="list-title">Comprovantes (últimas 48h)</h2>
+			<ul class="comprovantes">
+				{#each comprovantes as c (c.registroId)}
+					<li class="comprovante">
+						<div class="comprovante__info">
+							<span class="comprovante__tipo">{REGISTRO_LABELS[c.tipo]}</span>
+							<span class="comprovante__meta">
+								{formatDate(c.marcadoEm)} às {formatTime(c.marcadoEm)} · NSR {c.nsr}
+							</span>
+						</div>
+						<Button
+							variant="outline"
+							size="sm"
+							loading={baixandoComprovante === c.registroId}
+							onclick={() => baixarComprovante(c.registroId)}
+						>
+							<Icon name="download" size={13} />
+							PDF
+						</Button>
+					</li>
+				{/each}
+			</ul>
+		</Card>
 	{/if}
 </section>
 
@@ -410,5 +462,45 @@
 		padding: 0.75rem 1rem;
 		border-radius: var(--radius-sm);
 		text-align: center;
+	}
+
+	.comprovantes {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.comprovante {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.625rem 0;
+		border-bottom: 1px solid var(--color-border-soft);
+	}
+
+	.comprovante:last-child {
+		border-bottom: none;
+	}
+
+	.comprovante__info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		min-width: 0;
+	}
+
+	.comprovante__tipo {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.comprovante__meta {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		font-variant-numeric: tabular-nums;
 	}
 </style>

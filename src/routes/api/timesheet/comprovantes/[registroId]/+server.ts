@@ -1,42 +1,39 @@
+/**
+ * @endpoint GET /api/timesheet/comprovantes/:registroId
+ * @description PDF do comprovante de uma marcação original. O próprio
+ * trabalhador ou um admin da empresa. Se o arquivo guardado não existe mais
+ * (disco efêmero), o comprovante é regerado a partir do banco.
+ */
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
+import { obterComprovantePdf } from '@/lib/server/comprovante/emitir';
 import { requireUser, jsonError } from '../../../_lib/auth-helpers';
-import { lerComprovantePdf } from '@/lib/server/comprovante/storage';
-import { formatNsr } from '@/lib/server/nsr';
-
-type ComprovanteDetalhe = {
-	registroId: string;
-	empresaId: string;
-	colaboradorId: string;
-	nsr: bigint;
-	caminhoArquivo: string;
-};
 
 export const GET: RequestHandler = async ({ request, params }) => {
+	let user;
 	try {
-		const user = requireUser(request);
-		const registroId = params.registroId;
-
-		const comprovante = (await prisma.comprovante.findUnique({
-			where: { registroId }
-		})) as ComprovanteDetalhe | null;
-		if (!comprovante) return jsonError('Comprovante não encontrado', 404);
-		if (comprovante.empresaId !== user.empresaId) return jsonError('Acesso negado', 403);
-		if (user.role === 'colaborador' && user.colaboradorId !== comprovante.colaboradorId)
-			return jsonError('Acesso negado', 403);
-
-		const buffer = await lerComprovantePdf(comprovante.caminhoArquivo);
-		const filename = `comprovante-ponto-${formatNsr(comprovante.nsr)}.pdf`;
-
-		return new Response(new Uint8Array(buffer), {
-			status: 200,
-			headers: {
-				'Content-Type': 'application/pdf',
-				'Content-Disposition': `attachment; filename="${filename}"`
-			}
-		});
-	} catch (error: unknown) {
-		if (error instanceof Response) return error;
-		return jsonError(error instanceof Error ? error.message : 'Erro', 500);
+		user = requireUser(request);
+	} catch (response) {
+		return response as Response;
 	}
+
+	const registro = await prisma.registro.findUnique({
+		where: { id: params.registroId },
+		select: { id: true, empresaId: true, colaboradorId: true, fonte: true }
+	});
+	if (!registro || registro.empresaId !== user.empresaId || registro.fonte !== 'O') {
+		return jsonError('Comprovante não encontrado', 404);
+	}
+	if (registro.colaboradorId !== user.colaboradorId && user.role !== 'admin') {
+		return jsonError('Acesso negado', 403);
+	}
+
+	const { pdf, nome } = await obterComprovantePdf(registro.id);
+	return new Response(new Uint8Array(pdf), {
+		status: 200,
+		headers: {
+			'Content-Type': 'application/pdf',
+			'Content-Disposition': `attachment; filename="${nome}"`
+		}
+	});
 };
