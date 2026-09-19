@@ -177,16 +177,6 @@
 		flex-direction: column;
 		gap: 1rem;
 	}
-	.aviso {
-		font-size: 0.825rem;
-		color: #475569;
-		background: #fef3c7;
-		border-left: 3px solid #f59e0b;
-		padding: 0.625rem 0.75rem;
-		border-radius: 0.375rem;
-		margin: 0;
-		line-height: 1.4;
-	}
 	.campo {
 		display: flex;
 		flex-direction: column;
