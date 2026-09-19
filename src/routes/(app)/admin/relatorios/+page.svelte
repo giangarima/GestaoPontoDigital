@@ -121,20 +121,22 @@
 		URL.revokeObjectURL(url);
 	}
 
-	let baixando = $state<'afd' | 'aej' | 'espelho' | null>(null);
+	type Arquivo = 'afd' | 'aej' | 'espelho' | 'atestado';
+	let baixando = $state<Arquivo | null>(null);
 
 	/** Baixa um arquivo legal e avisa quando saiu sem assinatura digital. */
 	async function baixarArquivo(
-		qual: 'afd' | 'aej' | 'espelho',
+		qual: Arquivo,
 		endpoint: string,
 		nomePadrao: string,
-		avisoSemAssinatura: string
+		avisoSemAssinatura: string,
+		avisoAssinado = ''
 	) {
 		baixando = qual;
 		errorMsg = '';
 		try {
 			const { assinado } = await baixar(endpoint, nomePadrao);
-			avisoMsg = assinado ? '' : avisoSemAssinatura;
+			avisoMsg = assinado ? avisoAssinado : avisoSemAssinatura;
 		} catch {
 			errorMsg = `Falha ao gerar o ${nomePadrao}.`;
 		} finally {
@@ -163,6 +165,20 @@
 			`/relatorios/espelho/pdf?colaboradorId=${espColaboradorId}&inicio=${inicio}&fim=${fim}`,
 			'espelho de ponto',
 			AVISO_PDF_SEM_ASSINATURA
+		);
+	}
+
+	// Art. 89, § 2º: vale a assinatura qualificada (e-CPF) de cada responsável.
+	const AVISO_ATESTADO =
+		'Atestado gerado. Para ter validade, o responsável legal e o responsável técnico precisam assiná-lo com certificado ICP-Brasil (e-CPF).';
+
+	function baixarAtestado() {
+		baixarArquivo(
+			'atestado',
+			'/relatorios/atestado',
+			'Atestado Técnico',
+			AVISO_ATESTADO,
+			`${AVISO_ATESTADO} A assinatura digital incluída é só de demonstração.`
 		);
 	}
 
@@ -219,6 +235,15 @@
 			>
 				<Icon name="download" size={13} />
 				{baixando === 'aej' ? 'Gerando…' : 'Baixar AEJ'}
+			</button>
+			<button
+				class="export-btn"
+				onclick={baixarAtestado}
+				disabled={baixando === 'atestado'}
+				title="Atestado Técnico e Termo de Responsabilidade — Portaria 671/2021, art. 89"
+			>
+				<Icon name="download" size={13} />
+				{baixando === 'atestado' ? 'Gerando…' : 'Atestado Técnico'}
 			</button>
 		</div>
 	</header>
