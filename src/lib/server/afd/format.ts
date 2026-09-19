@@ -33,13 +33,27 @@ export function padNum(value: string | number | bigint, width: number): string {
 	return s.padStart(width, '0').slice(-width);
 }
 
+/** Pontuação tipográfica comum (fora do ISO-8859-1) → equivalente ASCII. */
+const TIPOGRAFICOS: Record<string, string> = {
+	'\u2013': '-', // –
+	'\u2014': '-', // —
+	'\u2018': "'", // ‘
+	'\u2019': "'", // ’
+	'\u201C': '"', // “
+	'\u201D': '"', // ”
+	'\u2026': '...' // …
+};
+
 /**
  * Campo A: alinhado à esquerda, completado com espaços à direita (trunca se
- * exceder). Caracteres fora do ISO-8859-1 (codepoint > 255, ex.: travessão "—")
- * viram "?" para não corromper a codificação do arquivo.
+ * exceder). Pontuação tipográfica vira ASCII; o que ainda ficar fora do
+ * ISO-8859-1 (codepoint > 255, ex.: emoji) vira "?" para não corromper a
+ * codificação do arquivo.
  */
 export function padAlpha(value: string | null | undefined, width: number): string {
-	const s = (value ?? '').slice(0, width);
+	const s = (value ?? '')
+		.replace(/[\u2013\u2014\u2018\u2019\u201C\u201D\u2026]/g, (c) => TIPOGRAFICOS[c])
+		.slice(0, width);
 	let out = '';
 	for (let i = 0; i < s.length; i++) {
 		out += s.charCodeAt(i) > 255 ? '?' : s[i];

@@ -8,6 +8,11 @@
  *
  * O encadeamento SHA-256 é só das batidas (tipo 7): `hashAnterior` aponta para o
  * hash da batida de maior NSR anterior. A serialização/hash vive em `registro-hash.ts`.
+ *
+ * Só marcações ORIGINAIS do REP (`fonte = 'O'`, feitas pelo trabalhador) entram no
+ * ledger. Inclusões do empregador no tratamento (`criarInclusao`, `fonte = 'I'`)
+ * ficam fora da sequência de NSR, da hash-chain e do AFD — a Portaria 671/2021
+ * reserva o AFD ao REP; o tratamento aparece só no AEJ, com o motivo.
  */
 import { prisma } from '@/lib/server/db';
 import { hashRegistro } from '@/lib/server/registro-hash';
@@ -46,8 +51,9 @@ export async function criarRegistro(
 
 	// Elo anterior = hash da batida de maior NSR existente (eventos tipo 2/5 não
 	// entram na cadeia de hash). null no primeiro elo.
+	// Só originais: inclusões têm nsr NULL (e o Postgres ordena NULL primeiro no DESC).
 	const ultima = await tx.registro.findFirst({
-		where: { empresaId: data.empresaId },
+		where: { empresaId: data.empresaId, fonte: 'O' },
 		orderBy: { nsr: 'desc' },
 		select: { hash: true }
 	});
@@ -68,9 +74,47 @@ export async function criarRegistro(
 			registradoEm,
 			criadoPor: data.criadoPor ?? undefined,
 			criadoMotivo: data.criadoMotivo ?? undefined,
+			fonte: 'O',
 			nsr,
 			hash,
 			hashAnterior
+		}
+	});
+}
+
+/** Inclusão manual do empregador (tratamento): exige autor e motivo. */
+export interface NovaInclusaoData {
+	colaboradorId: string;
+	empresaId: string;
+	cpf: string;
+	tipo: string;
+	marcadoEm: Date;
+	criadoPor: string;
+	criadoMotivo: string;
+}
+
+/**
+ * Registra uma marcação incluída pelo empregador no tratamento (fonteMarc "I" do
+ * AEJ): lançamento de batida esquecida ou a batida corrigida de um ajuste. NÃO
+ * recebe NSR nem hash e não entra no AFD — não é uma marcação feita no REP.
+ * `registradoEm` = momento da inclusão.
+ */
+export function criarInclusao(
+	tx: Prisma.TransactionClient,
+	data: NovaInclusaoData
+): Promise<Registro> {
+	return tx.registro.create({
+		data: {
+			colaboradorId: data.colaboradorId,
+			empresaId: data.empresaId,
+			cpf: data.cpf,
+			tipo: data.tipo,
+			metodo: 'manual',
+			marcadoEm: data.marcadoEm,
+			registradoEm: new Date(),
+			criadoPor: data.criadoPor,
+			criadoMotivo: data.criadoMotivo,
+			fonte: 'I'
 		}
 	});
 }
@@ -148,7 +192,7 @@ export interface CadeiaResultado {
  */
 export async function verificarCadeia(empresaId: string): Promise<CadeiaResultado> {
 	const registros = await prisma.registro.findMany({
-		where: { empresaId },
+		where: { empresaId, fonte: 'O' },
 		orderBy: { nsr: 'asc' },
 		select: {
 			nsr: true,
@@ -165,10 +209,12 @@ export async function verificarCadeia(empresaId: string): Promise<CadeiaResultad
 		const quebra = (motivo: string): CadeiaResultado => ({
 			total: registros.length,
 			valida: false,
-			quebraNsr: r.nsr.toString(),
+			quebraNsr: r.nsr === null ? null : r.nsr.toString(),
 			motivo
 		});
 
+		// O CHECK do banco impede, mas a auditoria não presume: original sem NSR/hash é quebra.
+		if (r.nsr === null || r.hash === null) return quebra('marcação original sem NSR/hash');
 		if ((r.hashAnterior ?? null) !== anterior) return quebra('hashAnterior não corresponde');
 
 		const recalc = hashRegistro(

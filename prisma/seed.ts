@@ -320,6 +320,11 @@ const colaboradoresSeed: ColaboradorSeed[] = [
 // e cria a corrigida vinculada (registroSubstitutoId); lançamentos manuais
 // preenchem batidas que faltaram. Determinístico (usa os primeiros dias que se
 // qualificam), então sobrevive a cada `db:seed`.
+//
+// São TRATAMENTO (fonte 'I'): sem NSR/hash, fora do AFD — só aparecem no AEJ. O
+// `registradoEm` é quando o admin fez a inclusão (depois do fechamento do mês),
+// não o horário da batida que ela representa.
+const INCLUSOES_EM = new Date('2026-02-02T10:00:00-03:00');
 const TODOS_TIPOS: RegistroTipo[] = ['entrada', 'saida_almoco', 'retorno_almoco', 'saida'];
 const HORARIO_PADRAO: Record<RegistroTipo, string> = {
 	entrada: '08:00',
@@ -332,6 +337,9 @@ const HORARIO_PADRAO: Record<RegistroTipo, string> = {
 // Contador único em memória (o seed é single-threaded); ao final gravamos o valor
 // em Empresa.ultimoNsr para a aplicação continuar a sequência. O hash-chain é só
 // das batidas (tipo 7), com o mesmo módulo puro da aplicação (registro-hash.ts).
+// Como num REP de verdade, o NSR segue a ORDEM DE GRAVAÇÃO: cadastro do
+// empregador → cadastro dos empregados na implantação → batidas em ordem
+// cronológica (de todos os colaboradores intercalados).
 interface BatidaElo {
 	cpf: string;
 	marcadoEm: Date;
@@ -365,15 +373,15 @@ function makeLedger() {
 	};
 }
 
-type Ledger = ReturnType<typeof makeLedger>;
-
 async function seedAjustesDemo(
 	empresaId: string,
 	adminId: string,
 	colaboradorId: string,
-	cpf: string,
-	ledger: Ledger
+	cpf: string
 ) {
+	let minuto = 0;
+	const proximoMomento = () => new Date(INCLUSOES_EM.getTime() + minuto++ * 60_000);
+
 	const registros = await prisma.registro.findMany({
 		where: { colaboradorId, criadoPor: null },
 		orderBy: { marcadoEm: 'asc' }
@@ -399,7 +407,6 @@ async function seedAjustesDemo(
 		if (!faltando) continue;
 		const marcadoEm = buildTimestamp(dia, HORARIO_PADRAO[faltando], 0);
 		const criadoMotivo = 'Colaborador esqueceu de bater — confirmado pelo gestor.';
-		const cadeia = ledger.eloBatida({ cpf, marcadoEm, registradoEm: marcadoEm });
 		await prisma.registro.create({
 			data: {
 				colaboradorId,
@@ -407,11 +414,11 @@ async function seedAjustesDemo(
 				cpf,
 				tipo: faltando,
 				marcadoEm,
-				registradoEm: marcadoEm,
+				registradoEm: proximoMomento(),
 				metodo: 'manual',
 				criadoPor: adminId,
 				criadoMotivo,
-				...cadeia
+				fonte: 'I'
 			}
 		});
 		manuais++;
@@ -442,7 +449,7 @@ async function seedAjustesDemo(
 		const corr = correcoes[ci];
 		const original = regs.find((r) => r.tipo === corr.tipo)!;
 		const marcadoEm = buildTimestamp(dia, corr.horario, 0);
-		const cadeia = ledger.eloBatida({ cpf, marcadoEm, registradoEm: marcadoEm });
+		const momento = proximoMomento();
 		await prisma.$transaction(async (tx) => {
 			const novo = await tx.registro.create({
 				data: {
@@ -451,11 +458,11 @@ async function seedAjustesDemo(
 					cpf,
 					tipo: corr.tipo,
 					marcadoEm,
-					registradoEm: marcadoEm,
+					registradoEm: momento,
 					metodo: 'manual',
 					criadoPor: adminId,
 					criadoMotivo: corr.motivo,
-					...cadeia
+					fonte: 'I'
 				}
 			});
 			await tx.registroAnulacao.create({
@@ -464,7 +471,8 @@ async function seedAjustesDemo(
 					registroSubstitutoId: novo.id,
 					empresaId,
 					motivo: corr.motivo,
-					anuladoPor: adminId
+					anuladoPor: adminId,
+					anuladoEm: momento
 				}
 			});
 		});
@@ -541,13 +549,15 @@ async function main() {
 
 	// Cadeia de NSR do REP (empregador tipo 2 → empregados tipo 5 → batidas tipo 7).
 	const ledger = makeLedger();
+	const IMPLANTACAO_REP = new Date('2025-12-01T09:00:00-03:00');
+	let cadastrados = 0;
 
 	// AFD tipo 2: inclusão do empregador (NSR 1).
 	await prisma.eventoEmpregador.create({
 		data: {
 			empresaId: empresa.id,
 			nsr: ledger.nextNsr(),
-			registradoEm: new Date('2025-12-01T09:00:00-0300'),
+			registradoEm: IMPLANTACAO_REP,
 			cpfResponsavel: admin.cpf,
 			inscricaoTipo: '1',
 			inscricao: (empresa.cnpj ?? '').replace(/\D/g, ''),
@@ -561,7 +571,15 @@ async function main() {
 		meioPeriodo: { id: meioPeriodo.id, dias: jornadaMeioPeriodo }
 	};
 
-	let totalRegistros = 0;
+	// Batidas de todos os colaboradores; o NSR/hash é atribuído no fim, em ordem cronológica.
+	const batidas: {
+		colaboradorId: string;
+		empresaId: string;
+		cpf: string;
+		tipo: RegistroTipo;
+		marcadoEm: Date;
+		metodo: 'manual';
+	}[] = [];
 
 	for (const c of colaboradoresSeed) {
 		const jornada = jornadasMap[c.jornada];
@@ -598,7 +616,8 @@ async function main() {
 			data: {
 				empresaId: empresa.id,
 				nsr: ledger.nextNsr(),
-				registradoEm: new Date(c.dataAdmissao),
+				// Cadastro no REP na implantação (logo após o tipo 2), não na admissão.
+				registradoEm: new Date(IMPLANTACAO_REP.getTime() + ++cadastrados * 60_000),
 				operacao: 'I',
 				cpfEmpregado: cpfDigitos,
 				nomeEmpregado: c.nome,
@@ -652,47 +671,33 @@ async function main() {
 		}
 		const justSet = new Set((c.justificativas ?? []).map((j) => j.data));
 
-		const registrosData: {
-			colaboradorId: string;
-			empresaId: string;
-			cpf: string;
-			tipo: RegistroTipo;
-			marcadoEm: Date;
-			registradoEm: Date;
-			metodo: 'manual';
-			nsr: bigint;
-			hash: string;
-			hashAnterior: string | null;
-		}[] = [];
-
 		for (const { iso, dow } of iterDates(2026, 1)) {
 			if (feriasSet.has(iso) || justSet.has(iso)) continue;
 			const diaConfig = jornada.dias[dow];
-			const pontos = gerarPontosDoDia(rng, iso, diaConfig, c.comportamento);
-			for (const p of pontos) {
-				const cadeia = ledger.eloBatida({
-					cpf: cpfDigitos,
-					marcadoEm: p.marcadoEm,
-					registradoEm: p.marcadoEm
-				});
-				registrosData.push({
+			for (const p of gerarPontosDoDia(rng, iso, diaConfig, c.comportamento)) {
+				batidas.push({
 					colaboradorId: colaborador.id,
 					empresaId: empresa.id,
 					cpf: cpfDigitos,
 					tipo: p.tipo,
 					marcadoEm: p.marcadoEm,
-					registradoEm: p.marcadoEm,
-					metodo: p.metodo,
-					...cadeia
+					metodo: p.metodo
 				});
 			}
 		}
-
-		if (registrosData.length > 0) {
-			await prisma.registro.createMany({ data: registrosData });
-			totalRegistros += registrosData.length;
-		}
 	}
+
+	// Marcação on-line: gravada no instante da batida (registradoEm = marcadoEm).
+	batidas.sort((a, b) => a.marcadoEm.getTime() - b.marcadoEm.getTime());
+	await prisma.registro.createMany({
+		data: batidas.map((b) => ({
+			...b,
+			registradoEm: b.marcadoEm,
+			fonte: 'O',
+			...ledger.eloBatida({ cpf: b.cpf, marcadoEm: b.marcadoEm, registradoEm: b.marcadoEm })
+		}))
+	});
+	const totalRegistros = batidas.length;
 
 	// Ajustes/lançamentos de exemplo no Carlos, para demonstrar a comparação no espelho.
 	const carlos = await prisma.colaborador.findFirst({
@@ -700,7 +705,7 @@ async function main() {
 		include: { usuario: { select: { cpf: true } } }
 	});
 	const demo = carlos
-		? await seedAjustesDemo(empresa.id, admin.id, carlos.id, carlos.usuario.cpf, ledger)
+		? await seedAjustesDemo(empresa.id, admin.id, carlos.id, carlos.usuario.cpf)
 		: { ajustes: 0, manuais: 0 };
 
 	// Persiste o NSR final para a aplicação continuar a sequência a partir do seed.

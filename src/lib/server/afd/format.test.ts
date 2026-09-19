@@ -34,8 +34,13 @@ describe('padAlpha (campo A)', () => {
 		expect(padAlpha(undefined, 2)).toBe('  ');
 	});
 
-	it('mantém acentos do ISO-8859-1 e troca o que está fora dele por "?"', () => {
-		expect(padAlpha('João — Ação', 11)).toBe('João ? Ação');
+	it('mantém acentos do ISO-8859-1 e converte pontuação tipográfica para ASCII', () => {
+		expect(padAlpha('João — “Ação” ’ok’…', 23)).toBe('João - "Ação" \'ok\'...  ');
+	});
+
+	it('o que ainda ficar fora do ISO-8859-1 vira "?"', () => {
+		// emoji ocupa 2 unidades UTF-16 → "??"
+		expect(padAlpha('Ok 👍 ✓', 7)).toBe('Ok ?? ?');
 	});
 });
 

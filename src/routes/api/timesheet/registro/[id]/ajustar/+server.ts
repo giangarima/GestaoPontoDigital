@@ -1,7 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { criarRegistro } from '@/lib/server/registro-ledger';
-import { emitirComprovante } from '@/lib/server/comprovante/emitir';
+import { criarInclusao } from '@/lib/server/registro-ledger';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../../_lib/auth-helpers';
 
@@ -54,14 +53,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 	const motivo = body.reason.trim();
 
+	// Ajuste = desconsidera a original (anulação, tpMarc "D" no AEJ) + inclui a
+	// corrigida no tratamento (fonteMarc "I"). A original continua no AFD, intacta.
 	const corrigido = await prisma.$transaction(async (tx) => {
-		const novo = await criarRegistro(tx, {
+		const novo = await criarInclusao(tx, {
 			colaboradorId: registro.colaboradorId,
 			empresaId: admin.empresaId,
 			cpf: registro.cpf,
 			tipo,
 			marcadoEm: ts,
-			metodo: 'manual',
 			criadoPor: admin.id,
 			criadoMotivo: motivo
 		});
@@ -78,10 +78,6 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 		return tx.registro.findUnique({ where: { id: novo.id }, include: { anulacao: true } });
 	});
-
-	if (corrigido) {
-		void emitirComprovante(corrigido.id);
-	}
 
 	return jsonOk(toRegistroDTO(corrigido!), 201);
 };

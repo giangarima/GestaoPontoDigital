@@ -64,7 +64,11 @@ export async function gerarAfd(empresaId: string, range: AfdRange = {}): Promise
 	const [eventosEmpregador, eventosEmpregado, batidas] = await Promise.all([
 		prisma.eventoEmpregador.findMany({ where: { empresaId }, orderBy: { nsr: 'asc' } }),
 		prisma.eventoEmpregado.findMany({ where: { empresaId }, orderBy: { nsr: 'asc' } }),
-		prisma.registro.findMany({ where: { empresaId, ...filtroMarcado }, orderBy: { nsr: 'asc' } })
+		// Só marcações originais do REP: inclusões do tratamento (fonte 'I') vão só no AEJ.
+		prisma.registro.findMany({
+			where: { empresaId, fonte: 'O', ...filtroMarcado },
+			orderBy: { nsr: 'asc' }
+		})
 	]);
 
 	const inscricao = (empresa.cnpj ?? '').replace(/\D/g, '');
@@ -129,6 +133,10 @@ export async function gerarAfd(empresaId: string, range: AfdRange = {}): Promise
 	}
 
 	for (const b of batidas) {
+		// Garantido pelo CHECK registros_fonte_check; falhar aqui é melhor que um AFD torto.
+		if (b.nsr === null || b.hash === null) {
+			throw new Error(`Marcação original ${b.id} sem NSR/hash`);
+		}
 		// Tipo 7 não tem CRC: o campo 8 é o hash SHA-256 já gravado (== fórmula oficial).
 		linhas.push({
 			nsr: b.nsr,
