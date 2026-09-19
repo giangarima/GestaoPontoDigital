@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
+import { ausenciaNoPeriodo, ehDia, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireUser, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -18,10 +19,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		return jsonError('startDate e endDate são obrigatórios', 400);
 	}
 
-	const start = new Date(`${startDate}T00:00:00.000Z`);
-	const end = new Date(`${endDate}T23:59:59.999Z`);
-
-	if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+	if (!ehDia(startDate) || !ehDia(endDate)) {
 		return jsonError('Datas inválidas', 400);
 	}
 
@@ -33,7 +31,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 
 	const [registros, ausencias] = await Promise.all([
 		prisma.registro.findMany({
-			where: { colaboradorId, marcadoEm: { gte: start, lte: end } },
+			where: { colaboradorId, marcadoEm: instantesDoPeriodo(startDate, endDate) },
 			orderBy: { marcadoEm: 'asc' },
 			include: { anulacao: true }
 		}),
@@ -41,8 +39,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			where: {
 				colaboradorId,
 				status: 'aprovada',
-				dataInicio: { lte: end },
-				dataFim: { gte: start }
+				...ausenciaNoPeriodo(startDate, endDate)
 			}
 		})
 	]);

@@ -24,6 +24,17 @@ export function formatDate(date: Date | string): string {
 	}).format(d);
 }
 
+/** "2026-03-25" (AAAA-MM-dd) no fuso de Brasília — formato das datas enviadas à API. */
+export function toDateKey(date: Date | string): string {
+	// en-CA formata como AAAA-MM-dd; toISOString() daria o dia em UTC (errado após as 21h).
+	return new Intl.DateTimeFormat('en-CA', {
+		timeZone: TIMEZONE,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit'
+	}).format(new Date(date));
+}
+
 /** "08:32" */
 export function formatTime(date: Date | string): string {
 	return new Intl.DateTimeFormat(LOCALE, {

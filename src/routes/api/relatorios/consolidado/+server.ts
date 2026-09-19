@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
 import { calcularHorasEsperadasMes } from '@/lib/server/jornada';
+import { ausenciaNoPeriodo, diasDoMes, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -18,8 +19,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 
 	const [ano, mesNum] = mes.split('-').map(Number);
-	const start = new Date(Date.UTC(ano, mesNum - 1, 1));
-	const end = new Date(Date.UTC(ano, mesNum, 0, 23, 59, 59, 999));
+	const periodo = diasDoMes(mes);
 
 	const colaboradores = await prisma.colaborador.findMany({
 		// MVP: consolidado do mês lista apenas colaboradores ativos.
@@ -29,7 +29,10 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	});
 
 	const registros = await prisma.registro.findMany({
-		where: { empresaId: admin.empresaId, marcadoEm: { gte: start, lte: end } },
+		where: {
+			empresaId: admin.empresaId,
+			marcadoEm: instantesDoPeriodo(periodo.inicio, periodo.fim)
+		},
 		orderBy: { marcadoEm: 'asc' }
 	});
 
@@ -38,8 +41,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	const ausenciasMes = await prisma.ausencia.findMany({
 		where: {
 			empresaId: admin.empresaId,
-			dataInicio: { lte: end },
-			dataFim: { gte: start }
+			...ausenciaNoPeriodo(periodo.inicio, periodo.fim)
 		}
 	});
 

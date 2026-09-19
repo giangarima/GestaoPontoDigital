@@ -6,7 +6,7 @@
 	import { onMount } from 'svelte';
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { DailySummary, RegistroType } from '@/services/timesheet.service';
-	import { formatTime, formatHoursMinutes } from '@/utils/date';
+	import { formatTime, formatHoursMinutes, toDateKey } from '@/utils/date';
 	import { SvelteDate } from 'svelte/reactivity';
 	import Card from '@/components/ui/Card.svelte';
 	import Icon from '@/components/ui/Icon.svelte';
@@ -38,8 +38,8 @@
 		const start = new SvelteDate();
 		start.setDate(end.getDate() - 30);
 		return {
-			startDate: start.toISOString().split('T')[0],
-			endDate: end.toISOString().split('T')[0]
+			startDate: toDateKey(start),
+			endDate: toDateKey(end)
 		};
 	}
 

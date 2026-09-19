@@ -15,6 +15,7 @@
 
 import type { Registro, RegistroAnulacao } from '@/lib/server/prisma-client/client';
 import { formatNsr } from '@/lib/server/nsr';
+import { dataPura, diaDaDataPura, diaDe } from '@/lib/server/periodo';
 
 export interface AnulacaoDTO {
 	motivo: string;
@@ -68,8 +69,9 @@ export function toRegistroDTO(p: RegistroComAnulacao): RegistroDTO {
 	};
 }
 
+/** Dia (AAAA-MM-dd, fuso de Brasília) em que a batida aconteceu — chave de agrupamento. */
 export function dateKey(date: Date): string {
-	return date.toISOString().split('T')[0];
+	return diaDe(date);
 }
 
 /**
@@ -78,18 +80,13 @@ export function dateKey(date: Date): string {
  * `justificativa.data` (ponto único) agora que a ausência tem intervalo.
  */
 export function ausenciaDateKeys(ausencias: { dataInicio: Date; dataFim: Date }[]): Set<string> {
+	// dataInicio/dataFim são datas puras (meia-noite UTC do dia civil) — ver periodo.ts.
 	const keys = new Set<string>();
 	for (const a of ausencias) {
-		const d = new Date(
-			Date.UTC(a.dataInicio.getUTCFullYear(), a.dataInicio.getUTCMonth(), a.dataInicio.getUTCDate())
-		);
-		const fim = Date.UTC(
-			a.dataFim.getUTCFullYear(),
-			a.dataFim.getUTCMonth(),
-			a.dataFim.getUTCDate()
-		);
+		const d = dataPura(diaDaDataPura(a.dataInicio));
+		const fim = dataPura(diaDaDataPura(a.dataFim)).getTime();
 		while (d.getTime() <= fim) {
-			keys.add(dateKey(d));
+			keys.add(diaDaDataPura(d));
 			d.setUTCDate(d.getUTCDate() + 1);
 		}
 	}

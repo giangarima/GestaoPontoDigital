@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
+import { ausenciaNoPeriodo, ehDia, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -27,15 +28,13 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		return jsonError('Colaborador não encontrado', 404);
 	}
 
-	const start = new Date(`${inicio}T00:00:00.000Z`);
-	const end = new Date(`${fim}T23:59:59.999Z`);
-	if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+	if (!ehDia(inicio) || !ehDia(fim)) {
 		return jsonError('Datas inválidas', 400);
 	}
 
 	const [registros, ausencias] = await Promise.all([
 		prisma.registro.findMany({
-			where: { colaboradorId, marcadoEm: { gte: start, lte: end } },
+			where: { colaboradorId, marcadoEm: instantesDoPeriodo(inicio, fim) },
 			orderBy: { marcadoEm: 'asc' },
 			include: { anulacao: true }
 		}),
@@ -44,8 +43,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 				colaboradorId,
 				empresaId: admin.empresaId,
 				status: 'aprovada',
-				dataInicio: { lte: end },
-				dataFim: { gte: start }
+				...ausenciaNoPeriodo(inicio, fim)
 			}
 		})
 	]);
@@ -53,9 +51,9 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	const datasAbonadas = ausenciaDateKeys(ausencias);
 
 	// Estado efetivo (com ajustes do admin) e estado original (só marcações do
-	// colaborador, criadoPor == null) — ambos a partir dos mesmos registros.
+	// colaborador, fonte "O") — ambos a partir dos mesmos registros.
 	const diasEfetivos = buildDailySummaries(registros, datasAbonadas);
-	const diasOriginais = buildDailySummaries(registros, datasAbonadas, (p) => p.criadoPor == null);
+	const diasOriginais = buildDailySummaries(registros, datasAbonadas, (p) => p.fonte === 'O');
 	const origPorData = new Map(diasOriginais.map((d) => [d.date, d]));
 
 	const dias = diasEfetivos.map((d) => {
