@@ -54,6 +54,9 @@ Híbrida Camada + Feature:
 - Singleton do client: `src/lib/server/db.ts` (usado em `+server.ts`).
 - Senhas (`Usuario.senhaHash`) com `bcryptjs`. `JornadaVersao.dias` serializada como JSON (compatibilidade com `src/lib/server/jornada.ts`).
 - **Multi-tenancy**: todas as entidades são escopadas por `empresaId`. Admin só enxerga dados da própria empresa.
+- **Datas e fuso**: todo "dia" é de Brasília (UTC-03:00), independente do fuso do servidor (UTC no Render) — use `src/lib/server/periodo.ts`. Instante (`marcadoEm`) → `diaDe`/`instantesDoPeriodo`; data pura (`Ausencia.dataInicio/dataFim`, `vigenciaInicio`, gravadas à meia-noite UTC) → `ausenciaNoPeriodo`/`dataPura`. Nunca `T00:00:00Z` para limitar batidas.
+- **Apuração de horas** (fonte única): `apuracao.ts` (pares por ordem, hora noturna reduzida 22h–5h, extras/déficit contra a jornada contratual via `horarioContratualDoDia`) e `espelho/montar.ts` → `apurarPeriodo` (todos os dias do período, faltas, abonos). Espelho, consolidado e dashboard usam `apurarPeriodo`; histórico/hoje usam `buildDailySummaries` com o mesmo cálculo por dia.
+- **Espelho de Ponto** (art. 84): PDF com pdf-lib (sem navegador) em `espelho/pdf.ts`, assinado em PAdES quando há certificado. Admin: `GET /api/relatorios/espelho/pdf`; colaborador (acesso mensal): `GET /api/timesheet/espelho?mes=AAAA-MM`.
 - **DTOs estáveis**: os mappers (`src/lib/server/timesheet.ts`, `ausencia.ts`, `colaborador.ts`) preservam o contrato antigo da API (`type`/`timestamp`/`method`, status `pending/approved/rejected`, campo `observacao`) traduzindo dos nomes novos do schema — o frontend não mudou.
 
 ## Autenticação

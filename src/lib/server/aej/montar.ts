@@ -39,7 +39,12 @@ import {
 	REP_DEV_INSCRICAO_TIPO,
 	REP_INPI
 } from '@/lib/server/afd/config';
-import { versaoVigenteEm, type DiaSemanaKey, type VersaoVigencia } from '@/lib/server/jornada';
+import {
+	horarioContratualDoDia,
+	type DiaSemanaKey,
+	type HorarioContratual,
+	type VersaoVigencia
+} from '@/lib/server/jornada';
 
 /** Identificador do único REP (o REP-P deste sistema) no registro "02". */
 const ID_REP_AEJ = '1';
@@ -105,11 +110,6 @@ function hhmm(hora: string): string {
 	return hora.replace(':', '');
 }
 
-function minutos(hora: string): number {
-	const [h, m] = hora.split(':').map(Number);
-	return h * 60 + m;
-}
-
 /** Dias AAAA-MM-dd de `inicio` a `fim` (inclusive), no calendário de Brasília. */
 function diasDoPeriodo(inicio: Date, fim: Date): string[] {
 	const dias: string[] = [];
@@ -131,35 +131,6 @@ function diaCalendario(d: Date): string {
 	return d.toISOString().slice(0, 10);
 }
 
-// ── Horário contratual ───────────────────────────────────────────────────────
-
-interface HorarioDia {
-	pares: [string, string][];
-	duracao: number;
-}
-
-/** Pares entrada/saída do dia na jornada (null = dia sem expediente). */
-function horarioDoDia(versoes: VersaoVigencia[], dia: string): HorarioDia | null {
-	const dias = versaoVigenteEm(versoes, new Date(`${dia}T00:00:00Z`));
-	const cfg = dias?.[diaDaSemana(dia)];
-	if (!cfg?.ativo || !cfg.entrada || !cfg.saida) return null;
-
-	const pares: [string, string][] =
-		cfg.saida_almoco && cfg.retorno_almoco
-			? [
-					[cfg.entrada, cfg.saida_almoco],
-					[cfg.retorno_almoco, cfg.saida]
-				]
-			: [[cfg.entrada, cfg.saida]];
-
-	// Par que vira a meia-noite (saída < entrada) conta +24h.
-	const duracao = pares.reduce((total, [e, s]) => {
-		const diff = minutos(s) - minutos(e);
-		return total + (diff < 0 ? diff + 1440 : diff);
-	}, 0);
-	return { pares, duracao };
-}
-
 // ── Montagem ─────────────────────────────────────────────────────────────────
 
 /** Monta as linhas do AEJ (sem CRLF). Função pura: todos os dados vêm na entrada. */
@@ -168,8 +139,8 @@ export function montarLinhasAej(e: AejEntrada): string[] {
 	const hoje = toD(e.agora);
 
 	// Horários contratuais distintos do período → códigos H1, H2… (registro 04).
-	const codigos = new Map<string, { codigo: string; horario: HorarioDia }>();
-	const codigoDoDia = (h: HorarioDia | null): string => {
+	const codigos = new Map<string, { codigo: string; horario: HorarioContratual }>();
+	const codigoDoDia = (h: HorarioContratual | null): string => {
 		if (!h) return '';
 		const chave = h.pares.map((p) => p.join('-')).join('/');
 		let item = codigos.get(chave);
@@ -205,7 +176,7 @@ export function montarLinhasAej(e: AejEntrada): string[] {
 		}
 
 		for (const dia of dias) {
-			const horario = vigente(dia) ? horarioDoDia(v.versoes, dia) : null;
+			const horario = vigente(dia) ? horarioContratualDoDia(v.versoes, dia) : null;
 			const doDia = porDia.get(dia) ?? [];
 
 			let validas = 0;
@@ -266,7 +237,7 @@ export function montarLinhasAej(e: AejEntrada): string[] {
 		return registro(
 			'04',
 			codigo,
-			horario.duracao,
+			horario.minutos,
 			hhmm(p1[0]),
 			hhmm(p1[1]),
 			p2 ? hhmm(p2[0]) : '',

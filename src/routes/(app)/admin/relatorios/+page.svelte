@@ -7,6 +7,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { relatorioService, type ConsolidadoRelatorio } from '@/services/relatorio.service';
 	import { colaboradorService } from '@/services/colaborador.service';
+	import { baixar } from '@/services/api';
 	import type { Colaborador } from '@/types/colaborador';
 	import { formatHoursMinutes } from '@/utils/date';
 	import EspelhoMensal from '@/components/timesheet/EspelhoMensal.svelte';
@@ -26,6 +27,8 @@
 
 	const AVISO_SEM_ASSINATURA =
 		'Arquivo gerado SEM assinatura digital (.p7s): certificado do REP não configurado no servidor.';
+	const AVISO_PDF_SEM_ASSINATURA =
+		'Espelho gerado SEM assinatura digital: certificado não configurado no servidor.';
 
 	const hoje = new Date();
 	const mesDefault = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
@@ -118,64 +121,56 @@
 		URL.revokeObjectURL(url);
 	}
 
-	let baixandoAfd = $state(false);
-	async function baixarAfd() {
-		baixandoAfd = true;
+	let baixando = $state<'afd' | 'aej' | 'espelho' | null>(null);
+
+	/** Baixa um arquivo legal e avisa quando saiu sem assinatura digital. */
+	async function baixarArquivo(
+		qual: 'afd' | 'aej' | 'espelho',
+		endpoint: string,
+		nomePadrao: string,
+		avisoSemAssinatura: string
+	) {
+		baixando = qual;
 		errorMsg = '';
 		try {
-			const token = localStorage.getItem('auth_token');
-			const res = await fetch('/api/relatorios/afd', {
-				headers: token ? { Authorization: `Bearer ${token}` } : {}
-			});
-			if (!res.ok) throw new Error('Falha ao gerar o AFD.');
-			avisoMsg = res.headers.get('X-Assinatura') === 'ausente' ? AVISO_SEM_ASSINATURA : '';
-			const blob = await res.blob();
-			const disp = res.headers.get('Content-Disposition') ?? '';
-			const nome = disp.match(/filename="(.+?)"/)?.[1] ?? 'AFD.txt';
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = nome;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : 'Erro ao gerar o AFD.';
+			const { assinado } = await baixar(endpoint, nomePadrao);
+			avisoMsg = assinado ? '' : avisoSemAssinatura;
+		} catch {
+			errorMsg = `Falha ao gerar o ${nomePadrao}.`;
 		} finally {
-			baixandoAfd = false;
+			baixando = null;
 		}
 	}
 
-	let baixandoAej = $state(false);
-	async function baixarAej() {
-		baixandoAej = true;
-		errorMsg = '';
-		try {
-			const mesRef = mes || mesDefault;
-			const [ano, mesNum] = mesRef.split('-');
-			const inicio = `${ano}-${mesNum}-01`;
-			const ultimoDia = new Date(Number(ano), Number(mesNum), 0).getDate();
-			const fim = `${ano}-${mesNum}-${String(ultimoDia).padStart(2, '0')}`;
+	function baixarAfd() {
+		baixarArquivo('afd', '/relatorios/afd', 'AFD', AVISO_SEM_ASSINATURA);
+	}
 
-			const token = localStorage.getItem('auth_token');
-			const res = await fetch(`/api/relatorios/aej?inicio=${inicio}&fim=${fim}`, {
-				headers: token ? { Authorization: `Bearer ${token}` } : {}
-			});
-			if (!res.ok) throw new Error('Falha ao gerar o AEJ.');
-			avisoMsg = res.headers.get('X-Assinatura') === 'ausente' ? AVISO_SEM_ASSINATURA : '';
-			const blob = await res.blob();
-			const disp = res.headers.get('Content-Disposition') ?? '';
-			const nome = disp.match(/filename="(.+?)"/)?.[1] ?? 'AEJ.txt';
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = nome;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : 'Erro ao gerar o AEJ.';
-		} finally {
-			baixandoAej = false;
-		}
+	function baixarAej() {
+		const { inicio, fim } = limitesDoMes(mes || mesDefault);
+		baixarArquivo(
+			'aej',
+			`/relatorios/aej?inicio=${inicio}&fim=${fim}`,
+			'AEJ',
+			AVISO_SEM_ASSINATURA
+		);
+	}
+
+	function baixarEspelhoPdf() {
+		const { inicio, fim } = limitesDoMes(espMes);
+		baixarArquivo(
+			'espelho',
+			`/relatorios/espelho/pdf?colaboradorId=${espColaboradorId}&inicio=${inicio}&fim=${fim}`,
+			'espelho de ponto',
+			AVISO_PDF_SEM_ASSINATURA
+		);
+	}
+
+	/** Primeiro e último dia (AAAA-MM-dd) do mês AAAA-MM. */
+	function limitesDoMes(mesRef: string): { inicio: string; fim: string } {
+		const [ano, mesNum] = mesRef.split('-');
+		const ultimoDia = new Date(Number(ano), Number(mesNum), 0).getDate();
+		return { inicio: `${mesRef}-01`, fim: `${mesRef}-${String(ultimoDia).padStart(2, '0')}` };
 	}
 
 	function initialsFromName(name: string): string {
@@ -210,20 +205,20 @@
 			<button
 				class="export-btn"
 				onclick={baixarAfd}
-				disabled={baixandoAfd}
+				disabled={baixando === 'afd'}
 				title="Arquivo Fonte de Dados — Portaria 671/2021"
 			>
 				<Icon name="download" size={13} />
-				{baixandoAfd ? 'Gerando…' : 'Baixar AFD'}
+				{baixando === 'afd' ? 'Gerando…' : 'Baixar AFD'}
 			</button>
 			<button
 				class="export-btn"
 				onclick={baixarAej}
-				disabled={baixandoAej}
+				disabled={baixando === 'aej'}
 				title="Arquivo Eletrônico de Jornada — Portaria 671/2021"
 			>
 				<Icon name="download" size={13} />
-				{baixandoAej ? 'Gerando…' : 'Baixar AEJ'}
+				{baixando === 'aej' ? 'Gerando…' : 'Baixar AEJ'}
 			</button>
 		</div>
 	</header>
@@ -268,6 +263,15 @@
 					<span>Mês</span>
 					<input type="month" bind:value={espMes} />
 				</label>
+				<button
+					class="export-btn"
+					onclick={baixarEspelhoPdf}
+					disabled={!espColaboradorId || !espMes || baixando === 'espelho'}
+					title="Espelho de Ponto Eletrônico — Portaria 671/2021, art. 84"
+				>
+					<Icon name="download" size={13} />
+					{baixando === 'espelho' ? 'Gerando…' : 'Baixar PDF'}
+				</button>
 			</div>
 		</Card>
 

@@ -97,3 +97,28 @@ export const patch = <T, B = unknown>(url: string, body: B) =>
 	api<T, B>(url, { method: 'PATCH', body });
 
 export const del = <T>(url: string) => api<T>(url, { method: 'DELETE' });
+
+/** Resultado de um download de arquivo (AFD, AEJ, espelho em PDF). */
+export interface Download {
+	/** `false` quando o servidor respondeu `X-Assinatura: ausente`. */
+	assinado: boolean;
+}
+
+/**
+ * Baixa um arquivo da API (resposta binária, não JSON) e abre o "salvar" do
+ * navegador. O nome vem do `Content-Disposition` (ou `nomePadrao`).
+ */
+export async function baixar(endpoint: string, nomePadrao: string): Promise<Download> {
+	const response = await fetch(`${BASE_URL}${endpoint}`, { headers: buildHeaders() });
+	if (!response.ok) await handleResponse(response); // 401 → login; lança ApiError
+
+	const disposicao = response.headers.get('Content-Disposition') ?? '';
+	const nome = disposicao.match(/filename="(.+?)"/)?.[1] ?? nomePadrao;
+	const url = URL.createObjectURL(await response.blob());
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = nome;
+	a.click();
+	URL.revokeObjectURL(url);
+	return { assinado: response.headers.get('X-Assinatura') !== 'ausente' };
+}

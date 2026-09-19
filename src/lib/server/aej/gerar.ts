@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/server/db';
 import { padNum, toD } from '@/lib/server/afd/format';
 import { ausenciaDateKeys } from '@/lib/server/timesheet';
+import { ausenciaNoPeriodo } from '@/lib/server/periodo';
 import { montarLinhasAej } from './montar';
 
 function digitos(valor: string | null | undefined): string {
@@ -41,11 +42,8 @@ export async function gerarAej(
 				include: { anulacao: { select: { motivo: true } } }
 			},
 			ausencias: {
-				where: {
-					status: 'aprovada',
-					dataInicio: { lte: range.fim },
-					dataFim: { gte: range.inicio }
-				}
+				// Ausência é data pura: compara pelos dias do período, não pelos instantes.
+				where: { status: 'aprovada', ...ausenciaNoPeriodo(toD(range.inicio), toD(range.fim)) }
 			}
 		},
 		orderBy: { usuario: { nome: 'asc' } }

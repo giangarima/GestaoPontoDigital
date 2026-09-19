@@ -6,8 +6,10 @@
 	import { onMount } from 'svelte';
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { DailySummary, RegistroType } from '@/services/timesheet.service';
-	import { formatTime, formatHoursMinutes } from '@/utils/date';
+	import { formatTime, formatHoursMinutes, toDateKey } from '@/utils/date';
 	import { SvelteDate } from 'svelte/reactivity';
+	import { baixar } from '@/services/api';
+	import Button from '@/components/ui/Button.svelte';
 	import Card from '@/components/ui/Card.svelte';
 	import Icon from '@/components/ui/Icon.svelte';
 
@@ -38,8 +40,8 @@
 		const start = new SvelteDate();
 		start.setDate(end.getDate() - 30);
 		return {
-			startDate: start.toISOString().split('T')[0],
-			endDate: end.toISOString().split('T')[0]
+			startDate: toDateKey(start),
+			endDate: toDateKey(end)
 		};
 	}
 
@@ -73,6 +75,25 @@
 		return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
 	}
 
+	// Espelho de ponto mensal em PDF (Portaria 671/2021, art. 84, parágrafo único).
+	let espelhoMes = $state(toDateKey(new Date()).slice(0, 7));
+	let baixandoEspelho = $state(false);
+	let espelhoAviso = $state('');
+
+	async function baixarEspelho(): Promise<void> {
+		if (!espelhoMes) return;
+		baixandoEspelho = true;
+		errorMsg = '';
+		try {
+			const { assinado } = await baixar(`/timesheet/espelho?mes=${espelhoMes}`, 'espelho.pdf');
+			espelhoAviso = assinado ? '' : 'Espelho gerado sem assinatura digital.';
+		} catch {
+			errorMsg = 'Erro ao gerar o espelho de ponto.';
+		} finally {
+			baixandoEspelho = false;
+		}
+	}
+
 	onMount(loadHistory);
 </script>
 
@@ -81,7 +102,26 @@
 </svelte:head>
 
 <section class="historico">
-	<h1>Histórico de Ponto</h1>
+	<header class="historico__header">
+		<h1>Histórico de Ponto</h1>
+		<div class="espelho-pdf">
+			<label class="espelho-pdf__mes">
+				<span>Espelho do mês</span>
+				<input type="month" bind:value={espelhoMes} />
+			</label>
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={baixarEspelho}
+				loading={baixandoEspelho}
+				disabled={!espelhoMes}
+			>
+				<Icon name="download" size={13} />
+				Baixar PDF
+			</Button>
+		</div>
+	</header>
+	{#if espelhoAviso}<p class="aviso" role="status">{espelhoAviso}</p>{/if}
 
 	{#if errorMsg}
 		<div class="error" role="alert">{errorMsg}</div>
@@ -172,6 +212,44 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
+	}
+
+	.historico__header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.espelho-pdf {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.5rem;
+	}
+
+	.espelho-pdf__mes {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.espelho-pdf__mes input {
+		padding: 0.375rem 0.5rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font: inherit;
+		font-size: 0.8125rem;
+	}
+
+	.aviso {
+		margin: 0;
+		font-size: 0.8125rem;
+		color: var(--color-warning-strong);
 	}
 
 	.historico h1 {

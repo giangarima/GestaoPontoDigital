@@ -4,7 +4,9 @@
  *
  * Conformidade com Portaria 671/2021:
  *  - Registros são imutáveis.
- *  - Correções via batidas manuais (criadoPor) ou anulações (RegistroAnulacao).
+ *  - Correções via inclusões do admin (fonte "I") ou anulações (RegistroAnulacao).
+ *  - Horas apuradas contra a jornada contratual, com hora noturna reduzida
+ *    (`apuracao.ts`) — não mais contra 8h fixas.
  *
  * Nota: os campos do DTO (`type`/`timestamp`/`method`/`createdBy`) mantêm o
  * contrato estável da API; o mapper traduz dos campos do schema (`tipo`/
@@ -15,6 +17,8 @@
 
 import type { Registro, RegistroAnulacao } from '@/lib/server/prisma-client/client';
 import { formatNsr } from '@/lib/server/nsr';
+import { dataPura, diaDaDataPura, diaDe } from '@/lib/server/periodo';
+import { apurarDia } from '@/lib/server/apuracao';
 
 export interface AnulacaoDTO {
 	motivo: string;
@@ -68,8 +72,9 @@ export function toRegistroDTO(p: RegistroComAnulacao): RegistroDTO {
 	};
 }
 
+/** Dia (AAAA-MM-dd, fuso de Brasília) em que a batida aconteceu — chave de agrupamento. */
 export function dateKey(date: Date): string {
-	return date.toISOString().split('T')[0];
+	return diaDe(date);
 }
 
 /**
@@ -78,41 +83,44 @@ export function dateKey(date: Date): string {
  * `justificativa.data` (ponto único) agora que a ausência tem intervalo.
  */
 export function ausenciaDateKeys(ausencias: { dataInicio: Date; dataFim: Date }[]): Set<string> {
+	// dataInicio/dataFim são datas puras (meia-noite UTC do dia civil) — ver periodo.ts.
 	const keys = new Set<string>();
 	for (const a of ausencias) {
-		const d = new Date(
-			Date.UTC(a.dataInicio.getUTCFullYear(), a.dataInicio.getUTCMonth(), a.dataInicio.getUTCDate())
-		);
-		const fim = Date.UTC(
-			a.dataFim.getUTCFullYear(),
-			a.dataFim.getUTCMonth(),
-			a.dataFim.getUTCDate()
-		);
+		const d = dataPura(diaDaDataPura(a.dataInicio));
+		const fim = dataPura(diaDaDataPura(a.dataFim)).getTime();
 		while (d.getTime() <= fim) {
-			keys.add(dateKey(d));
+			keys.add(diaDaDataPura(d));
 			d.setUTCDate(d.getUTCDate() + 1);
 		}
 	}
 	return keys;
 }
 
-/**
- * Agrupa pontos por data e calcula totalHours / overtime / deficit por dia.
- * Regra: totalHours = (saida_almoco - entrada) + (saida - retorno_almoco) em horas decimais.
- * Batidas anuladas são exibidas no DTO mas ignoradas no cálculo.
- * Se faltar qualquer um dos 4 tipos válidos, totalHours = 0. Jornada base: 8h/dia.
- * Dias com justificativa aprovada (abonado) têm deficit zerado.
- */
 /** Predicado que define quais registros contam para o cálculo de horas. */
 export type RegistroValido = (p: RegistroComAnulacao) => boolean;
 
 /** Padrão: ignora batidas anuladas (estado efetivo). */
 const NAO_ANULADA: RegistroValido = (p) => !p.anulacao;
 
+export interface OpcoesResumo {
+	/** Minutos contratuais do dia (0 = folga; `null` = sem jornada). Ver `contratualPorDia`. */
+	contratualMin: (dia: string) => number | null;
+	/** Dias (AAAA-MM-dd) com ausência aprovada — sem déficit. */
+	datasAbonadas?: Set<string>;
+	/** Quais registros contam (padrão: os não anulados). */
+	isValida?: RegistroValido;
+	/** Dia de hoje: hoje e depois o dia ainda está em andamento (sem déficit). */
+	hoje?: string;
+}
+
+/**
+ * Agrupa pontos por dia (Brasília) e apura horas / extras / déficit de cada um
+ * contra a jornada contratual do colaborador (ver `apuracao.ts`). Batidas
+ * anuladas aparecem no DTO, mas não entram no cálculo.
+ */
 export function buildDailySummaries(
 	registros: RegistroComAnulacao[],
-	datasAbonadas: Set<string> = new Set(),
-	isValida: RegistroValido = NAO_ANULADA
+	opcoes: OpcoesResumo
 ): DailySummaryDTO[] {
 	const byDay = new Map<string, RegistroComAnulacao[]>();
 
@@ -126,47 +134,35 @@ export function buildDailySummaries(
 	const summaries: DailySummaryDTO[] = [];
 	for (const [date, dayRegistros] of byDay.entries()) {
 		dayRegistros.sort((a, b) => a.marcadoEm.getTime() - b.marcadoEm.getTime());
-		summaries.push(buildSummary(date, dayRegistros, datasAbonadas.has(date), isValida));
+		summaries.push(buildSummary(date, dayRegistros, opcoes));
 	}
 
 	summaries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 	return summaries;
 }
 
+const horas = (min: number) => Number((min / 60).toFixed(2));
+
 export function buildSummary(
 	date: string,
 	registros: RegistroComAnulacao[],
-	abonado = false,
-	isValida: RegistroValido = NAO_ANULADA
+	opcoes: OpcoesResumo
 ): DailySummaryDTO {
-	const validas = registros.filter(isValida);
-	const byType = new Map(validas.map((p) => [p.tipo, p]));
-	const entrada = byType.get('entrada');
-	const saidaAlmoco = byType.get('saida_almoco');
-	const retornoAlmoco = byType.get('retorno_almoco');
-	const saida = byType.get('saida');
-
-	let totalHours = 0;
-	if (entrada && saidaAlmoco && retornoAlmoco && saida) {
-		const manha = (saidaAlmoco.marcadoEm.getTime() - entrada.marcadoEm.getTime()) / 3_600_000;
-		const tarde = (saida.marcadoEm.getTime() - retornoAlmoco.marcadoEm.getTime()) / 3_600_000;
-		totalHours = Number((manha + tarde).toFixed(2));
-	}
-
-	const JORNADA_BASE = 8;
-	const overtime = Math.max(0, Number((totalHours - JORNADA_BASE).toFixed(2)));
-	const deficit = abonado
-		? 0
-		: totalHours > 0
-			? Math.max(0, Number((JORNADA_BASE - totalHours).toFixed(2)))
-			: 0;
+	const isValida = opcoes.isValida ?? NAO_ANULADA;
+	const abonado = opcoes.datasAbonadas?.has(date) ?? false;
+	const emAndamento = date >= (opcoes.hoje ?? diaDe(new Date()));
+	const apuracao = apurarDia(
+		registros.filter(isValida).map((p) => p.marcadoEm),
+		opcoes.contratualMin(date),
+		abonado
+	);
 
 	return {
 		date,
 		registros: registros.map(toRegistroDTO),
-		totalHours,
-		overtime,
-		deficit,
+		totalHours: horas(apuracao.realizadoMin),
+		overtime: horas(apuracao.extraMin),
+		deficit: emAndamento ? 0 : horas(apuracao.deficitMin),
 		abonado
 	};
 }
