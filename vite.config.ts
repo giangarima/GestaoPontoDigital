@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
+import os from 'os';
 import path from 'path';
 
 /**
@@ -33,7 +34,11 @@ export default defineConfig({
 					name: 'db',
 					include: ['tests/db/**/*.test.ts'],
 					environment: 'node',
-					env: { DATABASE_URL: TEST_DATABASE_URL },
+					env: {
+						DATABASE_URL: TEST_DATABASE_URL,
+						// PDFs de comprovante gerados nos testes não vão para storage/ do dev.
+						COMPROVANTE_STORAGE_PATH: path.join(os.tmpdir(), 'ponto-test-comprovantes')
+					},
 					globalSetup: ['tests/db/global-setup.ts'],
 					setupFiles: ['tests/db/setup.ts'],
 					// Todos os arquivos compartilham o mesmo banco: roda um por vez.

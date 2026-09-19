@@ -7,11 +7,8 @@
  * um configurado. A portaria não exige assinatura no espelho; ela só garante a
  * integridade da cópia entregue ao trabalhador.
  */
-import { SUBFILTER_ETSI_CADES_DETACHED } from '@signpdf/utils';
-import { pdflibAddPlaceholder } from '@signpdf/placeholder-pdf-lib';
 import { prisma } from '@/lib/server/db';
-import { lerCertificadoP12 } from '@/lib/server/assinatura/certificado';
-import signPdf from '@/lib/server/comprovante/sign-pdf';
+import { finalizarPdf } from '@/lib/server/assinatura/pdf';
 import { ausenciaNoPeriodo, instantesDoPeriodo, type Dia } from '@/lib/server/periodo';
 import { montarEspelho, type EspelhoEntrada } from './montar';
 import { desenharEspelhoPdf } from './pdf';
@@ -93,20 +90,10 @@ export async function gerarEspelhoPdf(entrada: EspelhoEntrada): Promise<EspelhoP
 	const doc = await desenharEspelhoPdf(espelho);
 	const nome = `espelho_${slug(entrada.trabalhador.nome)}_${entrada.inicio}_${entrada.fim}.pdf`;
 
-	const semAssinatura =
-		process.env.COMPROVANTE_SKIP_SIGN === 'true' || lerCertificadoP12() === null;
-	if (semAssinatura) {
-		return { conteudo: await doc.save(), nome, assinado: false };
-	}
-
-	pdflibAddPlaceholder({
-		pdfDoc: doc,
-		reason: 'Espelho de Ponto Eletrônico (Portaria MTP 671/2021, art. 84)',
-		contactInfo: '',
-		name: espelho.empresa.razaoSocial,
-		location: espelho.empresa.razaoSocial,
-		subFilter: SUBFILTER_ETSI_CADES_DETACHED
+	const { conteudo, assinado } = await finalizarPdf(doc, {
+		motivo: 'Espelho de Ponto Eletrônico (Portaria MTP 671/2021, art. 84)',
+		nome: espelho.empresa.razaoSocial,
+		local: espelho.empresa.razaoSocial
 	});
-	const { buffer } = await signPdf(Buffer.from(await doc.save()));
-	return { conteudo: new Uint8Array(buffer), nome, assinado: true };
+	return { conteudo, nome, assinado };
 }
