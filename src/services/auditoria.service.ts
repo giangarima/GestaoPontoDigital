@@ -38,6 +38,21 @@ export interface Auditoria {
 	elos: Elo[];
 }
 
+/** Diferença entre o relógio do servidor (REP-P) e a Hora Legal Brasileira (NTP.br). */
+export interface HoraLegal {
+	consultadoEm: string;
+	/** null quando nenhum servidor NTP respondeu. */
+	medicao: {
+		servidor: string;
+		/** Hora legal − relógio do servidor (ms). Positivo = servidor atrasado. */
+		offsetMs: number;
+		atrasoMs: number;
+		estrato: number;
+	} | null;
+	falhas: { servidor: string; erro: string }[];
+}
+
 export const auditoriaService = {
-	verificar: () => get<Auditoria>('/timesheet/auditoria')
+	verificar: () => get<Auditoria>('/timesheet/auditoria'),
+	horaLegal: () => get<HoraLegal>('/admin/hora-legal')
 };
