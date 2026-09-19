@@ -1,12 +1,13 @@
 /**
  * @endpoint GET /api/timesheet/auditoria
- * @description Verifica a integridade da cadeia de batidas (NSR + hash-chain) da
- * empresa do admin autenticado — evidência de imutabilidade técnica exigida pela
- * Portaria 671/2021 (REP-P). Retorna o total, se a cadeia está íntegra e, em caso
- * de adulteração, o primeiro NSR onde a cadeia quebrou.
+ * @description Auditoria de integridade do diário de marcações da empresa do admin
+ * autenticado — evidência de imutabilidade técnica exigida pela Portaria 671/2021
+ * (REP-P). Verifica a hash-chain das batidas e a sequência de NSR (detecta
+ * alteração e exclusão, inclusive da última batida e de eventos de cadastro).
+ * Retorna `AuditoriaDTO` (ver `lib/server/auditoria.ts`).
  */
 import type { RequestHandler } from '@sveltejs/kit';
-import { verificarCadeia } from '@/lib/server/registro-ledger';
+import { auditarEmpresa } from '@/lib/server/auditoria';
 import { requireAdmin, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request }) => {
@@ -17,6 +18,5 @@ export const GET: RequestHandler = async ({ request }) => {
 		return response as Response;
 	}
 
-	const resultado = await verificarCadeia(admin.empresaId);
-	return jsonOk(resultado);
+	return jsonOk(await auditarEmpresa(admin.empresaId));
 };

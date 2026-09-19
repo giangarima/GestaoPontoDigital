@@ -259,16 +259,6 @@
 		color: #111;
 		font-weight: 500;
 	}
-	.aviso {
-		font-size: 0.825rem;
-		color: #475569;
-		background: #eff6ff;
-		border-left: 3px solid #3b82f6;
-		padding: 0.625rem 0.75rem;
-		border-radius: 0.375rem;
-		margin: 0;
-		line-height: 1.4;
-	}
 	.campo {
 		display: flex;
 		flex-direction: column;
