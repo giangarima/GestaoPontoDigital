@@ -15,6 +15,10 @@ npm run preview      # preview da build
 npm run check        # type-check (svelte-check)
 npm run lint         # ESLint
 npm run format       # Prettier
+npm test             # testes unitários (Vitest, funções puras — sem banco)
+npm run test:db      # testes de integração: sobe postgres-test (docker, porta 55432, tmpfs),
+                     # recria o schema via migrate deploy e roda tests/db/ (recusa banco não-local)
+npm run test:all     # os dois
 npm run db:migrate   # cria/aplica migration (após mudar schema.prisma)
 npm run db:seed      # popula admin + 6 colaboradores + 2 jornadas
 npm run db:studio    # abre Prisma Studio

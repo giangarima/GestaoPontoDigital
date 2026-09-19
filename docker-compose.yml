@@ -17,6 +17,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Banco descartável dos testes de integração (npm run test:db). Só sobe com
+  # --profile test; dados em tmpfs (memória), sem volume.
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: ponto_digital_postgres_test
+    profiles: ['test']
+    environment:
+      POSTGRES_USER: ponto
+      POSTGRES_PASSWORD: ponto
+      POSTGRES_DB: ponto_test
+    ports:
+      - '55432:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ponto -d ponto_test']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
   app:
     build: .
     container_name: ponto_digital_app
