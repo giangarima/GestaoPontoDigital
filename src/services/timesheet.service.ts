@@ -4,6 +4,7 @@
  */
 
 import { post, get, baixar } from './api';
+import { desvioDoServidor } from '@/utils/relogio';
 
 export type RegistroType = 'entrada' | 'saida_almoco' | 'retorno_almoco' | 'saida';
 
@@ -55,6 +56,16 @@ export const timesheetService = {
 		get<DailySummary[]>(
 			`/timesheet/history?startDate=${params.startDate}&endDate=${params.endDate}`
 		),
+
+	/**
+	 * Desvio (ms) entre o relógio do servidor (REP-P) e o do dispositivo: some
+	 * ao `Date.now()` para mostrar a hora do REP na tela de registro.
+	 */
+	sincronizarRelogio: async (): Promise<number> => {
+		const enviadoEm = Date.now();
+		const { agoraMs } = await get<{ agoraMs: number }>('/timesheet/hora');
+		return desvioDoServidor(enviadoEm, Date.now(), agoraMs);
+	},
 
 	/** Comprovantes das marcações das últimas 48h do próprio colaborador. */
 	comprovantes: () => get<ComprovanteItem[]>('/timesheet/comprovantes'),

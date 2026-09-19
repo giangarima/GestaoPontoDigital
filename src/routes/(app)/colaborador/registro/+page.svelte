@@ -10,6 +10,7 @@
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { RegistroType, DailySummary, ComprovanteItem } from '@/services/timesheet.service';
 	import { formatDate, formatTime, diffInMinutes } from '@/utils/date';
+	import { dataBrasiliaExtenso, horaBrasilia } from '@/utils/relogio';
 
 	const REGISTRO_LABELS: Record<RegistroType, string> = {
 		entrada: 'Entrada',
@@ -32,6 +33,19 @@
 	let registrando = $state(false);
 	let errorMsg = $state('');
 	let now = $state(new Date());
+	// Relógio do REP: hora do servidor (não a do dispositivo), em Brasília.
+	// null = ainda não sincronizou ou falhou → mostra a hora do dispositivo.
+	let desvioMs = $state<number | null>(null);
+	const RESSINCRONIZAR_MS = 5 * 60_000;
+
+	async function sincronizarRelogio(): Promise<void> {
+		try {
+			desvioMs = await timesheetService.sincronizarRelogio();
+			now = new Date(Date.now() + desvioMs);
+		} catch {
+			desvioMs = null;
+		}
+	}
 	let lastSuccess = $state('');
 
 	const nextRegistroType: RegistroType | null = $derived.by(() => {
@@ -110,8 +124,13 @@
 	onMount(() => {
 		loadToday();
 		loadComprovantes();
-		const timer = setInterval(() => (now = new Date()), 1000);
-		return () => clearInterval(timer);
+		sincronizarRelogio();
+		const timer = setInterval(() => (now = new Date(Date.now() + (desvioMs ?? 0))), 1000);
+		const ressinc = setInterval(sincronizarRelogio, RESSINCRONIZAR_MS);
+		return () => {
+			clearInterval(timer);
+			clearInterval(ressinc);
+		};
 	});
 
 	function registroAt(type: RegistroType): string | null {
@@ -125,16 +144,12 @@
 
 <section class="registro">
 	<div class="clock">
-		<span class="clock__date">
-			{now.toLocaleDateString('pt-BR', {
-				weekday: 'long',
-				day: '2-digit',
-				month: 'long',
-				year: 'numeric'
-			})}
-		</span>
-		<span class="clock__time">
-			{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+		<span class="clock__date">{dataBrasiliaExtenso(now)}</span>
+		<span class="clock__time">{horaBrasilia(now)}</span>
+		<span class="clock__fonte" class:clock__fonte--local={desvioMs === null}>
+			{desvioMs === null
+				? 'Hora do dispositivo — sem sincronizar com o servidor'
+				: 'Hora do servidor de ponto · Brasília'}
 		</span>
 		{#if totalMinutes > 0}
 			<span class="clock__worked">
@@ -274,6 +289,16 @@
 		letter-spacing: -0.03em;
 		font-variant-numeric: tabular-nums;
 		line-height: 1.1;
+	}
+
+	.clock__fonte {
+		color: var(--color-text-muted);
+		font-size: 0.6875rem;
+		letter-spacing: 0.02em;
+	}
+
+	.clock__fonte--local {
+		color: var(--color-warning);
 	}
 
 	.clock__worked {
