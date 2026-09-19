@@ -10,12 +10,12 @@ import {
 	registrarEventoEmpregador,
 	verificarCadeia
 } from '@/lib/server/registro-ledger';
-import { baterPonto, criarColaborador, criarEmpresa } from './fixtures';
+import { baterPonto, criarColaborador, criarEmpresa, incluirPonto } from './fixtures';
 
 /** NSRs de todos os eventos da empresa (tipos 2, 5 e 7), ordenados. */
 async function todosNsrs(empresaId: string): Promise<number[]> {
 	const [regs, emp, empr] = await Promise.all([
-		prisma.registro.findMany({ where: { empresaId }, select: { nsr: true } }),
+		prisma.registro.findMany({ where: { empresaId, fonte: 'O' }, select: { nsr: true } }),
 		prisma.eventoEmpregado.findMany({ where: { empresaId }, select: { nsr: true } }),
 		prisma.eventoEmpregador.findMany({ where: { empresaId }, select: { nsr: true } })
 	]);
@@ -220,5 +220,45 @@ describe('verificarCadeia: detecção de adulteração', () => {
 			quebraNsr: '4',
 			motivo: 'hashAnterior não corresponde'
 		});
+	});
+});
+
+describe('inclusões do tratamento (fonte "I")', () => {
+	it('não consomem NSR nem entram na cadeia: a próxima original encadeia na original anterior', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+
+		const r1 = await baterPonto(empresa.id, colaborador.id, usuario.cpf);
+		const inclusao = await incluirPonto(empresa.id, colaborador.id, usuario.cpf, new Date());
+		const r2 = await baterPonto(empresa.id, colaborador.id, usuario.cpf);
+
+		expect(inclusao).toMatchObject({ fonte: 'I', nsr: null, hash: null, hashAnterior: null });
+		expect(r1.fonte).toBe('O');
+		expect(r2.nsr).toBe(2n);
+		expect(r2.hashAnterior).toBe(r1.hash);
+		expect(await verificarCadeia(empresa.id)).toMatchObject({ total: 2, valida: true });
+		expect(await todosNsrs(empresa.id)).toEqual([1, 2]);
+	});
+
+	it('o banco recusa inclusão com NSR e original sem hash (CHECK registros_fonte_check)', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+		const base = {
+			empresaId: empresa.id,
+			colaboradorId: colaborador.id,
+			cpf: usuario.cpf,
+			tipo: 'entrada',
+			metodo: 'manual'
+		};
+
+		await expect(
+			prisma.registro.create({ data: { ...base, fonte: 'I', nsr: 99n, hash: 'x' } })
+		).rejects.toThrow(/registros_fonte_check/);
+		await expect(
+			prisma.registro.create({ data: { ...base, fonte: 'O', nsr: 99n } })
+		).rejects.toThrow(/registros_fonte_check/);
+		await expect(
+			prisma.registro.create({ data: { ...base, fonte: 'X', nsr: 99n, hash: 'x' } })
+		).rejects.toThrow(/registros_fonte_check/);
 	});
 });

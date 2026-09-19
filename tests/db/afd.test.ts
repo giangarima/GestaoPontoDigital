@@ -8,7 +8,7 @@ import { prisma } from '@/lib/server/db';
 import { gerarAfd } from '@/lib/server/afd/gerar';
 import { crc16kermit } from '@/lib/server/afd/format';
 import { registrarEventoEmpregado, registrarEventoEmpregador } from '@/lib/server/registro-ledger';
-import { baterPonto, criarColaborador, criarEmpresa } from './fixtures';
+import { baterPonto, criarColaborador, criarEmpresa, incluirPonto } from './fixtures';
 
 /** Tamanho (sem CRLF) de cada tipo de registro no leiaute do REP-P. */
 const TAMANHO_POR_TIPO: Record<string, number> = {
@@ -60,6 +60,8 @@ beforeAll(async () => {
 			marcadoEm: new Date(`2026-01-${dia}T${hora}:00Z`)
 		});
 	}
+	// Inclusão do tratamento (admin): NÃO pode aparecer no AFD — só o REP gera o AFD.
+	await incluirPonto(empresa.id, colab.colaborador.id, cpf, new Date('2026-01-06T15:00:00Z'));
 });
 
 async function linhasDoAfd(range?: Parameters<typeof gerarAfd>[1]) {
@@ -109,10 +111,18 @@ describe('gerarAfd', () => {
 		}
 	});
 
+	it('inclusões do tratamento (fonte "I") ficam fora do AFD', async () => {
+		const { linhas } = await linhasDoAfd();
+		const inclusoes = await prisma.registro.count({ where: { empresaId: empresa.id, fonte: 'I' } });
+		expect(inclusoes).toBe(1);
+		expect(linhas.filter((l) => l[9] === '7')).toHaveLength(3); // só as 3 originais
+		expect(linhas.join('\n')).not.toContain('2026-01-06T12:00:00-0300');
+	});
+
 	it('o campo de hash do tipo 7 é o hash gravado no banco', async () => {
 		const { linhas } = await linhasDoAfd();
 		const regs = await prisma.registro.findMany({
-			where: { empresaId: empresa.id },
+			where: { empresaId: empresa.id, fonte: 'O' },
 			orderBy: { nsr: 'asc' }
 		});
 		const tipo7 = linhas.filter((l) => l[9] === '7');

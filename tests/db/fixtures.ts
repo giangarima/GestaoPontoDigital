@@ -4,7 +4,7 @@
  */
 import { randomInt } from 'node:crypto';
 import { prisma } from '@/lib/server/db';
-import { criarRegistro, type NovoRegistroData } from '@/lib/server/registro-ledger';
+import { criarInclusao, criarRegistro, type NovoRegistroData } from '@/lib/server/registro-ledger';
 
 function digitos(n: number): string {
 	return Array.from({ length: n }, () => randomInt(10)).join('');
@@ -54,6 +54,37 @@ export function baterPonto(
 			tipo: 'entrada',
 			metodo: 'manual',
 			...extra
+		})
+	);
+}
+
+/** Inclusão do tratamento (admin): fonte "I", sem NSR/hash. */
+export async function incluirPonto(
+	empresaId: string,
+	colaboradorId: string,
+	cpf: string,
+	marcadoEm: Date,
+	motivo = 'Colaborador esqueceu de bater'
+) {
+	const admin = await prisma.usuario.create({
+		data: {
+			empresaId,
+			nome: 'Admin',
+			email: `admin-${randomInt(1e9)}@teste.com`,
+			cpf: digitos(11),
+			senhaHash: 'x',
+			role: 'admin'
+		}
+	});
+	return prisma.$transaction((tx) =>
+		criarInclusao(tx, {
+			empresaId,
+			colaboradorId,
+			cpf,
+			tipo: 'entrada',
+			marcadoEm,
+			criadoPor: admin.id,
+			criadoMotivo: motivo
 		})
 	);
 }

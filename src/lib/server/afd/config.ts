@@ -20,3 +20,18 @@ export const REP_DEV_INSCRICAO_TIPO = process.env.AFD_REP_DEV_TIPO ?? '1';
 
 /** CNPJ/CPF do desenvolvedor do REP (campo 13, só dígitos). */
 export const REP_DEV_INSCRICAO = process.env.AFD_REP_DEV_INSCRICAO ?? '00000000000000';
+
+// ── PTRP (Programa de Tratamento de Registro de Ponto) — registro "08" do AEJ ──
+// O PTRP é o módulo de tratamento deste sistema (ajustes, espelho, AEJ). Também
+// placeholders: preencher com os dados reais do desenvolvedor antes do uso real.
+
+/** Versão do leiaute do AEJ (campo 10 do registro "01"). */
+export const AEJ_VERSAO_LEIAUTE = '002';
+
+/** Nome e versão do PTRP (campos 2 e 3 do registro "08"). */
+export const PTRP_NOME = process.env.PTRP_NOME ?? 'OnTime - Controle de Jornada Digital';
+export const PTRP_VERSAO = process.env.PTRP_VERSAO ?? '0.1.0';
+
+/** Razão social/nome e e-mail do desenvolvedor do PTRP (campos 6 e 7 do registro "08"). */
+export const PTRP_DESENV_RAZAO = process.env.PTRP_DESENV_RAZAO ?? 'OnTime Sistemas';
+export const PTRP_DESENV_EMAIL = process.env.PTRP_DESENV_EMAIL ?? 'contato@ontime.dev';

@@ -1,7 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { criarRegistro } from '@/lib/server/registro-ledger';
-import { emitirComprovante } from '@/lib/server/comprovante/emitir';
+import { criarInclusao } from '@/lib/server/registro-ledger';
 import { toRegistroDTO } from '@/lib/server/timesheet';
 import { requireAdmin, jsonError, jsonOk } from '../../../_lib/auth-helpers';
 
@@ -49,20 +48,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		return jsonError('Colaborador não encontrado', 404);
 	}
 
+	// Inclusão do tratamento (fonteMarc "I"): sem NSR/hash, fora do AFD e sem
+	// comprovante — não é uma marcação feita pelo trabalhador no REP.
 	const registro = await prisma.$transaction((tx) =>
-		criarRegistro(tx, {
+		criarInclusao(tx, {
 			colaboradorId: colaborador.id,
 			empresaId: admin.empresaId,
 			cpf: colaborador.usuario.cpf,
 			tipo: body.type!,
 			marcadoEm: ts,
-			metodo: 'manual',
 			criadoPor: admin.id,
 			criadoMotivo: body.reason!.trim()
 		})
 	);
-
-	void emitirComprovante(registro.id);
 
 	return jsonOk(toRegistroDTO(registro), 201);
 };

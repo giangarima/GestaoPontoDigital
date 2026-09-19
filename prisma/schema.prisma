@@ -165,8 +165,13 @@ model Registro {
   // `registradoEm` = data-hora da gravação (distinta de `marcadoEm` em batida retroativa).
   cpf           String
   registradoEm  DateTime    @default(now()) @map("registrado_em") @db.Timestamptz(6)
-  nsr           BigInt      @map("nsr")
-  hash          String
+  // Fonte da marcação (campo fonteMarc do AEJ): "O" = marcação original do REP
+  // (feita pelo trabalhador; recebe NSR + hash-chain e entra no AFD); "I" = incluída
+  // manualmente pelo empregador no tratamento (sem NSR/hash, fora do AFD — só
+  // aparece no AEJ com o motivo). CHECK no banco garante o par fonte × NSR/hash.
+  fonte         String      @default("O")
+  nsr           BigInt?     @map("nsr")
+  hash          String?
   hashAnterior  String?     @map("hash_anterior")
 
   criadoPor         String?           @map("criado_por")

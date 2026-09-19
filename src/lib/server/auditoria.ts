@@ -52,21 +52,21 @@ const includeColaborador = {
 } as const;
 
 function toEloDTO(r: {
-	nsr: bigint;
+	nsr: bigint | null;
 	tipo: string;
 	marcadoEm: Date;
 	registradoEm: Date;
-	hash: string;
+	hash: string | null;
 	hashAnterior: string | null;
 	colaborador: { usuario: { nome: string } };
 }): EloDTO {
 	return {
-		nsr: r.nsr.toString(),
+		nsr: String(r.nsr),
 		colaborador: r.colaborador.usuario.nome,
 		tipo: r.tipo,
 		marcadoEm: r.marcadoEm.toISOString(),
 		registradoEm: r.registradoEm.toISOString(),
-		hash: r.hash,
+		hash: r.hash ?? '',
 		hashAnterior: r.hashAnterior
 	};
 }
@@ -79,7 +79,7 @@ async function nsrsAusentes(empresaId: string): Promise<{ total: number; primeir
 			FROM empresas e WHERE e.id = ${empresaId}
 		),
 		existentes AS (
-			SELECT nsr FROM registros WHERE empresa_id = ${empresaId}
+			SELECT nsr FROM registros WHERE empresa_id = ${empresaId} AND fonte = 'O'
 			UNION ALL SELECT nsr FROM eventos_empregador WHERE empresa_id = ${empresaId}
 			UNION ALL SELECT nsr FROM eventos_empregado WHERE empresa_id = ${empresaId}
 		),
@@ -100,7 +100,7 @@ export async function auditarEmpresa(empresaId: string): Promise<AuditoriaDTO> {
 		verificarCadeia(empresaId),
 		nsrsAusentes(empresaId),
 		prisma.registro.findMany({
-			where: { empresaId },
+			where: { empresaId, fonte: 'O' }, // inclusões (nsr NULL) viriam primeiro no DESC
 			orderBy: { nsr: 'desc' },
 			take: ELOS_RECENTES,
 			include: includeColaborador
