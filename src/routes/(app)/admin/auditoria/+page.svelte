@@ -9,7 +9,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { auditoriaService, type Auditoria } from '@/services/auditoria.service';
+	import { auditoriaService, type Auditoria, type HoraLegal } from '@/services/auditoria.service';
 	import { formatDate, formatTime } from '@/utils/date';
 	import Button from '@/components/ui/Button.svelte';
 	import Card from '@/components/ui/Card.svelte';
@@ -56,7 +56,30 @@
 		return `${formatDate(iso)} ${formatTime(iso)}`;
 	}
 
+	// Relógio do REP × Hora Legal Brasileira (NTP.br). Carrega à parte: uma
+	// falha de rede no NTP não pode esconder a auditoria do diário.
+	let horaLegal = $state<HoraLegal | null>(null);
+	let horaLegalErro = $state(false);
+
+	async function medirHoraLegal() {
+		horaLegalErro = false;
+		try {
+			horaLegal = await auditoriaService.horaLegal();
+		} catch {
+			horaLegalErro = true;
+		}
+	}
+
+	/** "adiantado 1,2 s" / "atrasado 35 ms" do ponto de vista do relógio do servidor. */
+	function descreverDiferenca(offsetMs: number): string {
+		const abs = Math.abs(offsetMs);
+		const valor = abs >= 1000 ? `${(abs / 1000).toLocaleString('pt-BR')} s` : `${abs} ms`;
+		if (abs === 0) return 'sem diferença';
+		return `${offsetMs > 0 ? 'atrasado' : 'adiantado'} ${valor}`;
+	}
+
 	async function verificar() {
+		medirHoraLegal();
 		loading = true;
 		errorMsg = '';
 		try {
@@ -113,6 +136,40 @@
 				tone={resultado.sequencia.totalAusentes === 0 ? 'success' : 'danger'}
 			/>
 		</div>
+
+		<Card>
+			<h2>Relógio do REP × Hora Legal Brasileira</h2>
+			{#if horaLegalErro}
+				<p class="muted">Não foi possível consultar a hora legal agora.</p>
+			{:else if !horaLegal}
+				<p class="muted">Consultando o NTP.br…</p>
+			{:else}
+				{@const m = horaLegal.medicao}
+				<p class="explicacao">
+					{#if m}
+						Relógio do servidor {descreverDiferenca(m.offsetMs)} em relação à hora legal.
+					{:else}
+						Nenhum servidor NTP respondeu: a hospedagem pode estar bloqueando a porta UDP 123.
+					{/if}
+				</p>
+				<dl class="detalhes">
+					{#if m}
+						<dt>Servidor</dt>
+						<dd class="mono">{m.servidor} (estrato {m.estrato})</dd>
+						<dt>Diferença</dt>
+						<dd class="mono">{m.offsetMs} ms</dd>
+						<dt>Atraso de rede</dt>
+						<dd class="mono">{m.atrasoMs} ms</dd>
+					{/if}
+					{#each horaLegal.falhas as f (f.servidor)}
+						<dt>Falha</dt>
+						<dd><span class="mono">{f.servidor}</span>: {f.erro}</dd>
+					{/each}
+					<dt>Consultado em</dt>
+					<dd>{dataHora(horaLegal.consultadoEm)}</dd>
+				</dl>
+			{/if}
+		</Card>
 
 		{#if resultado.quebra}
 			<Card>
