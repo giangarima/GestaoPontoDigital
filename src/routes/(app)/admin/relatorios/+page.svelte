@@ -22,6 +22,10 @@
 	let aba = $state<Aba>('espelho');
 	let colaboradores = $state<Colaborador[]>([]);
 	let errorMsg = $state('');
+	let avisoMsg = $state('');
+
+	const AVISO_SEM_ASSINATURA =
+		'Arquivo gerado SEM assinatura digital (.p7s): certificado do REP não configurado no servidor.';
 
 	const hoje = new Date();
 	const mesDefault = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
@@ -124,6 +128,7 @@
 				headers: token ? { Authorization: `Bearer ${token}` } : {}
 			});
 			if (!res.ok) throw new Error('Falha ao gerar o AFD.');
+			avisoMsg = res.headers.get('X-Assinatura') === 'ausente' ? AVISO_SEM_ASSINATURA : '';
 			const blob = await res.blob();
 			const disp = res.headers.get('Content-Disposition') ?? '';
 			const nome = disp.match(/filename="(.+?)"/)?.[1] ?? 'AFD.txt';
@@ -156,6 +161,7 @@
 				headers: token ? { Authorization: `Bearer ${token}` } : {}
 			});
 			if (!res.ok) throw new Error('Falha ao gerar o AEJ.');
+			avisoMsg = res.headers.get('X-Assinatura') === 'ausente' ? AVISO_SEM_ASSINATURA : '';
 			const blob = await res.blob();
 			const disp = res.headers.get('Content-Disposition') ?? '';
 			const nome = disp.match(/filename="(.+?)"/)?.[1] ?? 'AEJ.txt';
@@ -244,6 +250,7 @@
 	</div>
 
 	{#if errorMsg}<div class="error">{errorMsg}</div>{/if}
+	{#if avisoMsg}<div class="aviso" role="status">{avisoMsg}</div>{/if}
 
 	{#if aba === 'espelho'}
 		<Card>
@@ -685,6 +692,14 @@
 	.error {
 		background: var(--color-danger-bg);
 		color: var(--color-danger);
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-sm);
+	}
+
+	.aviso {
+		background: var(--color-warning-soft);
+		color: var(--color-warning-strong);
+		border: 1px solid var(--color-warning-soft-border);
 		padding: 0.75rem 1rem;
 		border-radius: var(--radius-sm);
 	}
