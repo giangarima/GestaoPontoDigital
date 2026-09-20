@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/server/db';
-import { pendenciasDoPeriodo } from '@/lib/server/pendencias';
+import { contarDiasEmAberto, pendenciasDoPeriodo } from '@/lib/server/pendencias';
 import { baterPonto, criarColaborador, criarEmpresa, incluirPonto } from './fixtures';
 
 const brt = (s: string) => new Date(`${s}:00-03:00`);
@@ -195,5 +195,150 @@ describe('pendenciasDoPeriodo', () => {
 			'2026-03-04',
 			'2026-03-03'
 		]);
+	});
+});
+
+/**
+ * `contarDiasEmAberto` é uma agregação SQL que existe só para não trazer o mês
+ * inteiro a cada atualização automática do dashboard. Ela reimplementa a regra
+ * de `pendenciasDoPeriodo` em outra linguagem, então precisa de uma trava: se as
+ * duas divergirem, o badge do menu passa a mentir sobre a tela de pendências.
+ */
+describe('contarDiasEmAberto ≡ pendenciasDoPeriodo().total', () => {
+	it('bate com a lista num cenário com todos os casos de borda juntos', async () => {
+		const empresa = await criarEmpresa();
+		const outra = await criarEmpresa();
+
+		// 1. Dias em aberto normais (ímpar, encerrados) — devem contar.
+		const a = await criarColaborador(empresa.id, 'Aberto');
+		await vincularJornada(empresa.id, a.colaborador.id);
+		for (const dia of ['2026-03-03', '2026-03-04']) {
+			await baterPonto(empresa.id, a.colaborador.id, a.usuario.cpf, {
+				marcadoEm: brt(`${dia}T08:00`)
+			});
+		}
+
+		// 2. Dia par (fechado) não conta; dia ímpar em sábado (folga) conta.
+		const b = await criarColaborador(empresa.id, 'Borda');
+		await vincularJornada(empresa.id, b.colaborador.id);
+		for (const h of ['08:00', '12:00']) {
+			await baterPonto(empresa.id, b.colaborador.id, b.usuario.cpf, {
+				marcadoEm: brt(`2026-03-05T${h}`)
+			});
+		}
+		// 2026-03-07 é sábado, sem expediente na jornada.
+		await baterPonto(empresa.id, b.colaborador.id, b.usuario.cpf, {
+			marcadoEm: brt('2026-03-07T09:00')
+		});
+
+		// 3. Dia ímpar coberto por ausência aprovada — não conta.
+		const c = await criarColaborador(empresa.id, 'Abonado');
+		await vincularJornada(empresa.id, c.colaborador.id);
+		await baterPonto(empresa.id, c.colaborador.id, c.usuario.cpf, {
+			marcadoEm: brt('2026-03-10T08:00')
+		});
+		await prisma.ausencia.create({
+			data: {
+				colaboradorId: c.colaborador.id,
+				empresaId: empresa.id,
+				tipo: 'atestado',
+				dataInicio: new Date('2026-03-10T00:00:00Z'),
+				dataFim: new Date('2026-03-10T00:00:00Z'),
+				status: 'aprovada'
+			}
+		});
+
+		// 4. Dia ímpar antes da admissão — não conta.
+		const d = await criarColaborador(empresa.id, 'Novato');
+		await vincularJornada(empresa.id, d.colaborador.id);
+		await prisma.colaborador.update({
+			where: { id: d.colaborador.id },
+			data: { dataAdmissao: new Date('2026-03-15T00:00:00Z') }
+		});
+		await baterPonto(empresa.id, d.colaborador.id, d.usuario.cpf, {
+			marcadoEm: brt('2026-03-11T08:00')
+		});
+		await baterPonto(empresa.id, d.colaborador.id, d.usuario.cpf, {
+			marcadoEm: brt('2026-03-16T08:00')
+		});
+
+		// 5. Marcação anulada não conta como marcação: o dia fica par.
+		const e = await criarColaborador(empresa.id, 'Anulado');
+		await vincularJornada(empresa.id, e.colaborador.id);
+		for (const h of ['08:00', '12:00']) {
+			await baterPonto(empresa.id, e.colaborador.id, e.usuario.cpf, {
+				marcadoEm: brt(`2026-03-12T${h}`)
+			});
+		}
+		const extra = await baterPonto(empresa.id, e.colaborador.id, e.usuario.cpf, {
+			marcadoEm: brt('2026-03-12T12:00')
+		});
+		// `anuladoPor` é FK para Usuario: a anulação precisa de um autor.
+		const admin = await prisma.usuario.create({
+			data: {
+				empresaId: empresa.id,
+				nome: 'Admin',
+				email: 'admin-anulacao@teste.com',
+				cpf: '00011122233',
+				senhaHash: 'x',
+				role: 'admin'
+			}
+		});
+		await prisma.registroAnulacao.create({
+			data: {
+				registroId: extra.id,
+				empresaId: empresa.id,
+				motivo: 'Marcação no mesmo minuto',
+				anuladoPor: admin.id
+			}
+		});
+
+		// 6. Outra empresa com dia em aberto — não pode vazar.
+		const f = await criarColaborador(outra.id, 'DeOutra');
+		await vincularJornada(outra.id, f.colaborador.id);
+		await baterPonto(outra.id, f.colaborador.id, f.usuario.cpf, {
+			marcadoEm: brt('2026-03-03T08:00')
+		});
+
+		const lista = await pendenciasDoPeriodo(empresa.id, '2026-03-01', '2026-03-31', DEPOIS);
+		const contagem = await contarDiasEmAberto(empresa.id, '2026-03-01', '2026-03-31', DEPOIS);
+
+		expect(contagem).toBe(lista.total);
+		expect(contagem).toBeGreaterThan(0);
+	});
+
+	it('ignora o dia corrente, como a lista', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+		await vincularJornada(empresa.id, colaborador.id);
+		await baterPonto(empresa.id, colaborador.id, usuario.cpf, {
+			marcadoEm: brt('2026-03-03T08:00')
+		});
+
+		const agora = brt('2026-03-03T10:00');
+		const lista = await pendenciasDoPeriodo(empresa.id, '2026-03-01', '2026-03-31', agora);
+		const contagem = await contarDiasEmAberto(empresa.id, '2026-03-01', '2026-03-31', agora);
+
+		expect(lista.total).toBe(0);
+		expect(contagem).toBe(0);
+	});
+
+	it('não conta colaborador desligado, como a lista', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+		await vincularJornada(empresa.id, colaborador.id);
+		await baterPonto(empresa.id, colaborador.id, usuario.cpf, {
+			marcadoEm: brt('2026-03-03T08:00')
+		});
+		await prisma.colaborador.update({
+			where: { id: colaborador.id },
+			data: { deletedAt: new Date('2026-03-20T00:00:00Z') }
+		});
+
+		const lista = await pendenciasDoPeriodo(empresa.id, '2026-03-01', '2026-03-31', DEPOIS);
+		const contagem = await contarDiasEmAberto(empresa.id, '2026-03-01', '2026-03-31', DEPOIS);
+
+		expect(lista.total).toBe(0);
+		expect(contagem).toBe(0);
 	});
 });
