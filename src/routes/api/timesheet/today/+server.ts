@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildSummary } from '@/lib/server/timesheet';
 import { ausenciaNoPeriodo, diaDe, instantesDoPeriodo } from '@/lib/server/periodo';
-import { contratualPorDia } from '@/lib/server/jornada';
+import { contratualPorDia, previstasPorDia } from '@/lib/server/jornada';
 import { requireUser, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request }) => {
@@ -40,7 +40,8 @@ export const GET: RequestHandler = async ({ request }) => {
 		buildSummary(hoje, registros, {
 			hoje,
 			datasAbonadas: ausencias.length > 0 ? new Set([hoje]) : new Set(),
-			contratualMin: contratualPorDia(colaborador?.jornada?.versoes)
+			contratualMin: contratualPorDia(colaborador?.jornada?.versoes),
+			previstas: previstasPorDia(colaborador?.jornada?.versoes)
 		})
 	);
 };

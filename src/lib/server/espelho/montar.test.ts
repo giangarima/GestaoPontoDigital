@@ -159,6 +159,45 @@ describe('montarEspelho', () => {
 		expect(esp.tratamentos).toEqual([]);
 	});
 
+	it('tolerância da CLT: variações pequenas não geram déficit e aparecem na ocorrência', () => {
+		const esp = montarEspelho(
+			entrada({
+				marcacoes: [
+					original('2026-01-05T08:03', 1),
+					original('2026-01-05T12:00', 2),
+					original('2026-01-05T13:00', 3),
+					original('2026-01-05T16:57', 4)
+				]
+			})
+		);
+		expect(diaDe(esp, '2026-01-05')).toMatchObject({
+			realizadoMin: 474,
+			extraMin: 0,
+			deficitMin: 0,
+			toleranciaMin: 6,
+			ocorrencia: 'Tolerância (6 min)'
+		});
+	});
+
+	it('variações somando mais de 10 min no dia: conta o tempo real', () => {
+		const esp = montarEspelho(
+			entrada({
+				marcacoes: [
+					original('2026-01-05T08:03', 1),
+					original('2026-01-05T11:57', 2),
+					original('2026-01-05T13:03', 3),
+					original('2026-01-05T16:57', 4)
+				]
+			})
+		);
+		expect(diaDe(esp, '2026-01-05')).toMatchObject({
+			realizadoMin: 468,
+			deficitMin: 12,
+			toleranciaMin: 0,
+			ocorrencia: ''
+		});
+	});
+
 	it('marcação ímpar no passado fica "Incompleto", sem déficit', () => {
 		const esp = montarEspelho(
 			entrada({
