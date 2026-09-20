@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Ponto Digital API",
 		"version": "1.0.0",
-		"description": "API do sistema de ponto eletrônico. Implementada via SvelteKit +server.ts com persistência em PostgreSQL via Prisma. Autenticação por JWT (HS256, validade 12h) enviado no header Authorization: Bearer <token>.\n\nTodas as entidades são escopadas por empresa (multi-tenant): o admin só enxerga dados da própria empresa.\n**Credenciais de teste (seed):**\n- Admin: admin@teste.com | Senha123\n- Colaborador (Carlos): 11144477735 | Senha123\n- Colaborador (Ana): 22255588846 | Senha123"
+		"description": "API do sistema de ponto eletrônico. Implementada via SvelteKit +server.ts com persistência em PostgreSQL via Prisma. Autenticação por JWT (HS256, validade 12h) enviado no header Authorization: Bearer <token>.\n\nTodas as entidades são escopadas por empresa (multi-tenant): o admin só enxerga dados da própria empresa.\n**Credenciais de teste (seed):**\n- Admin: admin@empresa1.com | Senha123\n- RH (admin + colaborador): eduarda@empresa1.com | Senha123\n- Colaboradores: <primeironome>@empresa1.com | Senha123 (o login também aceita CPF)"
 	},
 	"servers": [
 		{
@@ -39,7 +39,7 @@
 				"properties": {
 					"id": { "type": "string", "example": "clx123" },
 					"name": { "type": "string", "example": "Carlos Souza" },
-					"email": { "type": "string", "format": "email", "example": "carlos@teste.com" },
+					"email": { "type": "string", "format": "email", "example": "adriana@empresa1.com" },
 					"cpf": { "type": "string", "example": "11144477735" },
 					"role": { "type": "string", "enum": ["admin", "colaborador"], "example": "colaborador" },
 					"empresaId": { "type": "string", "example": "clxEmpresa" }
@@ -64,7 +64,7 @@
 					"identifier": {
 						"type": "string",
 						"description": "E-mail ou CPF do usuário",
-						"example": "carlos@teste.com"
+						"example": "adriana@empresa1.com"
 					},
 					"password": { "type": "string", "format": "password", "example": "Senha123" }
 				}

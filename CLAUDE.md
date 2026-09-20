@@ -20,7 +20,7 @@ npm run test:db      # testes de integração: sobe postgres-test (docker, porta
                      # recria o schema via migrate deploy e roda tests/db/ (recusa banco não-local)
 npm run test:all     # os dois
 npm run db:migrate   # cria/aplica migration (após mudar schema.prisma)
-npm run db:seed      # popula admin + 6 colaboradores + 2 jornadas
+npm run db:seed      # popula a Empresa 1: 21 colaboradores, 5 jornadas, 6.760 marcações
 npm run db:studio    # abre Prisma Studio
 npm run db:reset     # reseta DB e roda seed
 ```
@@ -83,9 +83,27 @@ Volume nomeado `postgres_data` (não polui o repo). `.gitattributes` força `eol
 
 **Credenciais de seed** (senha `Senha123` para todos):
 
-- `admin@teste.com` — admin puro (sem vínculo de colaborador)
-- `carlos@teste.com`, `ana@teste.com` — colaboradores
-- `daniela@teste.com` — **caso RH**: `role='admin'` **e** colaborador (gerencia e bate ponto)
+- `admin@empresa1.com` — admin puro (sem vínculo de colaborador)
+- `eduarda@empresa1.com` — **caso RH**: `role='admin'` **e** colaboradora (gerencia e bate ponto)
+- demais colaboradores: `<primeironome>@empresa1.com` (ex.: `adriana@empresa1.com`)
+
+**Departamentos** (4) e **jornadas** (5) são independentes, como no schema: a _Loja_ reúne 15
+pessoas em dois turnos (abertura 08:30–17:20 e fechamento 10:00–19:00), que é o caso que dá
+sentido a `PATCH /api/departamentos/:id/jornada`.
+
+**Origem dos dados** (`prisma/seed-importada.ts` + `prisma/seed-data/marcacoes.json`):
+marcações derivadas de um AFDT/ACJEF (Portaria 1510/2009) de uma empresa real, **anonimizadas
+de forma irreversível** — o PIS (único identificador pessoal dos arquivos) e o cabeçalho do
+empregador nunca chegaram ao banco; nomes e CPFs são sintéticos. Seis meses, 21 trabalhadores,
+6.760 marcações, com o que um gerador sintético não produz: 181 dias em aberto, inclusões com
+motivo real, marcações desconsideradas, três e quatro pares E/S no mesmo dia e jornada de
+sábado em meio período. Serviu de conferência do cálculo: 1.728 de 1.733 dias fecharam ao
+minuto (99,7%) contra a apuração do sistema de origem. Os arquivos-fonte não estão no
+repositório e não são necessários.
+
+**O seed não cobre** (não existe nos arquivos de origem): ajuste vinculado
+(`registroSubstitutoId`), ausência de tipo `ferias` e ausência pendente de aprovação. Esses caminhos estão cobertos por testes
+(`tests/db/`), não por dados de seed.
 
 ## Qualidade de Código
 
