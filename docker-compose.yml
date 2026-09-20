@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      # Só no loopback: o app fala com o banco pela rede interna do compose, e
+      # numa máquina com IP público o 5432 aberto seria um convite.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -49,10 +51,35 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       NODE_ENV: production
       PORT: ${PORT:-3050}
+      # ORIGIN precisa bater EXATAMENTE com a URL pública: o adapter-node usa ela
+      # no check de CSRF, e divergência faz todo POST ser rejeitado (login inclusive).
       ORIGIN: ${ORIGIN:-http://localhost:3050}
-      JWT_SECRET: ${JWT_SECRET:-segredo}
+      APP_URL: ${APP_URL:-}
+      # Sem default: um segredo previsível em produção assina JWT que qualquer um forja.
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      # O padrão do adapter é 512 KB, e o anexo de justificativa viaja como data
+      # URL no corpo JSON (até 5 MB na tela) — sem isto, a foto volta 413.
+      BODY_SIZE_LIMIT: ${BODY_SIZE_LIMIT:-8M}
+      # Certificado do REP. `certs/` é gitignorado, então em servidor o caminho
+      # normal é o base64, que tem prioridade sobre o path.
+      COMPROVANTE_CERT_BASE64: ${COMPROVANTE_CERT_BASE64:-}
+      COMPROVANTE_CERT_PASS: ${COMPROVANTE_CERT_PASS:-}
+      COMPROVANTE_SKIP_SIGN: ${COMPROVANTE_SKIP_SIGN:-false}
+      # Sem SMTP_HOST o link de recuperação de senha só aparece no log.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
-      - '${PORT:-3050}:${PORT:-3050}'
+      # Só no loopback: quem atende a internet é o proxy reverso (nginx/443).
+      - '127.0.0.1:${PORT:-3050}:${PORT:-3050}'
+    volumes:
+      # Cache dos comprovantes em PDF. O download regera do banco quando o arquivo
+      # some, então isto é economia, não integridade — mas sem o volume cada deploy
+      # joga fora o cache inteiro.
+      - comprovantes:/app/storage
 
 volumes:
   postgres_data:
+  comprovantes:
