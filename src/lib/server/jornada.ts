@@ -10,6 +10,7 @@ import type {
 	Jornada as JornadaDB,
 	JornadaVersao as JornadaVersaoDB
 } from '@/lib/server/prisma-client/client';
+import { inicioDoDia } from '@/lib/server/periodo';
 
 export interface DiaSemanaDTO {
 	ativo: boolean;
@@ -190,6 +191,37 @@ export function horarioContratualDoDia(
 		return total + (diff < 0 ? diff + 1440 : diff);
 	}, 0);
 	return { pares, minutos };
+}
+
+/**
+ * Instantes das marcações previstas em `dia` pelos pares `HH:mm` do horário —
+ * na ordem em que o trabalhador deveria bater. Horário que só cresce: um valor
+ * menor que o anterior (saída depois da meia-noite) avança um dia.
+ * Base da tolerância do art. 58, §1º da CLT (ver `apuracao.ts`).
+ */
+export function marcacoesPrevistas(dia: string, pares: [string, string][]): Date[] {
+	const base = inicioDoDia(dia).getTime();
+	let anterior = -1;
+	return pares.flat().map((hhmm) => {
+		let minutos = minutosDoHorario(hhmm);
+		while (minutos < anterior) minutos += 1440;
+		anterior = minutos;
+		return new Date(base + minutos * 60_000);
+	});
+}
+
+/**
+ * Marcações previstas por dia para a apuração; `null` quando não há horário
+ * (folga, DSR ou colaborador sem jornada).
+ */
+export function previstasPorDia(
+	versoes: VersaoVigencia[] | null | undefined
+): (dia: string) => Date[] | null {
+	if (!versoes?.length) return () => null;
+	return (dia) => {
+		const h = horarioContratualDoDia(versoes, dia);
+		return h ? marcacoesPrevistas(dia, h.pares) : null;
+	};
 }
 
 /**

@@ -353,7 +353,8 @@ export async function desenharEspelhoPdf(esp: Espelho): Promise<PDFDocument> {
 	const legenda = [
 		'(I) marcação incluída pelo empregador no tratamento. (D) marcação desconsiderada: a original continua registrada no AFD.',
 		'Realizado considera a hora noturna reduzida (22h às 5h: 52min30s = 1 hora). Noturno = tempo de relógio trabalhado entre 22h e 5h.',
-		'Falta = dia com expediente, sem marcação válida e sem ausência aprovada. Hor. = código do horário contratual do dia.'
+		'Falta = dia com expediente, sem marcação válida e sem ausência aprovada. Hor. = código do horário contratual do dia.',
+		'Tolerância (CLT, art. 58, §1º): variações de até 5 min por marcação, somando no máximo 10 min no dia, não são descontadas nem contadas como hora extra; acima desse limite conta o tempo integral (Súmula 366 do TST).'
 	].flatMap((l) => w.quebrar(l, LARGURA, 6.5));
 	w.y -= 6;
 	w.garantir(legenda.length * 8 + 4);

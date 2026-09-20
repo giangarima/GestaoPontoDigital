@@ -21,7 +21,11 @@
  * PURO (sem Prisma) — ver `gerar.ts` para a carga do banco.
  */
 import { apurarDia } from '@/lib/server/apuracao';
-import { horarioContratualDoDia, type VersaoVigencia } from '@/lib/server/jornada';
+import {
+	horarioContratualDoDia,
+	marcacoesPrevistas,
+	type VersaoVigencia
+} from '@/lib/server/jornada';
 import { dataPura, diaDaDataPura, diaDe, type Dia } from '@/lib/server/periodo';
 import { ausenciaDateKeys } from '@/lib/server/timesheet';
 
@@ -100,9 +104,11 @@ export interface DiaEspelho {
 	noturnoMin: number;
 	extraMin: number;
 	deficitMin: number;
-	/** Falta, Férias, Atestado, DSR, Folga, Incompleto… ('' = dia normal). */
+	/** Falta, Férias, Atestado, DSR, Folga, Incompleto, Tolerância… ('' = dia normal). */
 	ocorrencia: string;
 	falta: boolean;
+	/** Minutos de variação absorvidos pela tolerância do art. 58, §1º da CLT. */
+	toleranciaMin: number;
 }
 
 export interface HorarioEspelho {
@@ -243,7 +249,8 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		// 0 = sem expediente (folga/DSR); null = sem jornada ou fora do vínculo.
 		const contratual = semJornada || !vinculado ? null : (horario?.minutos ?? 0);
 		const ausencia = ausenciaDoDia.get(dia);
-		const apuracao = apurarDia(validas, contratual, ausencia !== undefined);
+		const previstas = horario ? marcacoesPrevistas(dia, horario.pares) : undefined;
+		const apuracao = apurarDia(validas, contratual, ausencia !== undefined, previstas);
 
 		const emAndamento = dia >= hoje;
 		const falta =
@@ -256,6 +263,7 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		else if (apuracao.incompleto && !emAndamento) ocorrencia = 'Incompleto';
 		else if (contratual === 0 && validas.length === 0)
 			ocorrencia = semana === 'Dom' ? 'DSR' : 'Folga';
+		else if (apuracao.toleranciaMin > 0) ocorrencia = `Tolerância (${apuracao.toleranciaMin} min)`;
 
 		return {
 			dia,
@@ -267,7 +275,8 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 			extraMin: apuracao.extraMin,
 			deficitMin: falta ? contratual : emAndamento ? 0 : apuracao.deficitMin,
 			ocorrencia,
-			falta
+			falta,
+			toleranciaMin: apuracao.toleranciaMin
 		};
 	});
 

@@ -33,6 +33,8 @@ export interface DailySummary {
 	totalHours: number;
 	overtime: number;
 	deficit: number;
+	/** Dia dentro da tolerância da CLT (art. 58, §1º): sem extras nem déficit. */
+	tolerancia?: boolean;
 }
 
 /** Comprovante de uma marcação original das últimas 48h (Portaria 671/2021, art. 80). */

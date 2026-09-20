@@ -47,6 +47,8 @@ export interface DailySummaryDTO {
 	overtime: number;
 	deficit: number;
 	abonado: boolean;
+	/** Dia dentro da tolerância do art. 58, §1º da CLT: sem extras nem déficit. */
+	tolerancia: boolean;
 }
 
 export type RegistroComAnulacao = Registro & { anulacao?: RegistroAnulacao | null };
@@ -105,6 +107,8 @@ const NAO_ANULADA: RegistroValido = (p) => !p.anulacao;
 export interface OpcoesResumo {
 	/** Minutos contratuais do dia (0 = folga; `null` = sem jornada). Ver `contratualPorDia`. */
 	contratualMin: (dia: string) => number | null;
+	/** Marcações previstas no dia (`previstasPorDia`) — base da tolerância da CLT. */
+	previstas?: (dia: string) => Date[] | null;
 	/** Dias (AAAA-MM-dd) com ausência aprovada — sem déficit. */
 	datasAbonadas?: Set<string>;
 	/** Quais registros contam (padrão: os não anulados). */
@@ -154,7 +158,8 @@ export function buildSummary(
 	const apuracao = apurarDia(
 		registros.filter(isValida).map((p) => p.marcadoEm),
 		opcoes.contratualMin(date),
-		abonado
+		abonado,
+		opcoes.previstas?.(date) ?? undefined
 	);
 
 	return {
@@ -163,6 +168,7 @@ export function buildSummary(
 		totalHours: horas(apuracao.realizadoMin),
 		overtime: horas(apuracao.extraMin),
 		deficit: emAndamento ? 0 : horas(apuracao.deficitMin),
-		abonado
+		abonado,
+		tolerancia: apuracao.toleranciaMin > 0
 	};
 }
