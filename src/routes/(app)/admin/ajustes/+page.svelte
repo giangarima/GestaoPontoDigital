@@ -5,9 +5,13 @@
   Ferramenta de edição separada do espelho (que é somente leitura): permite
   corrigir batidas (ajuste vinculado), anular avulso e cadastrar batida manual.
   Reaproveita o grid EspelhoMensal em modo `editavel`.
+
+  Aceita `?colaboradorId=&mes=` para abrir já posicionada — é assim que
+  /admin/pendencias entrega o dia em aberto pronto para tratamento.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { colaboradorService } from '@/services/colaborador.service';
 	import type { Colaborador } from '@/types/colaborador';
 	import EspelhoMensal from '@/components/timesheet/EspelhoMensal.svelte';
@@ -19,8 +23,10 @@
 	const hoje = new Date();
 	const mesDefault = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
 
-	let colaboradorId = $state('');
-	let mes = $state(mesDefault);
+	// Pré-seleção por query string, para /admin/pendencias linkar direto no dia
+	// que precisa de tratamento.
+	let colaboradorId = $state(page.url.searchParams.get('colaboradorId') ?? '');
+	let mes = $state(page.url.searchParams.get('mes') ?? mesDefault);
 	const colaboradorSelecionado = $derived(
 		colaboradores.find((c) => c.id === colaboradorId) ?? null
 	);

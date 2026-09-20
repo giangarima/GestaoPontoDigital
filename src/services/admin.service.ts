@@ -33,7 +33,36 @@ export interface DashboardMetrics {
 	entradasHoje: EntradaDia[];
 }
 
+export interface MarcacaoPendente {
+	hora: string;
+	fonte: 'O' | 'I';
+}
+
+export interface DiaPendente {
+	dia: string;
+	semana: string;
+	marcacoes: MarcacaoPendente[];
+	realizadoMin: number;
+}
+
+export interface PendenciaColaborador {
+	colaboradorId: string;
+	nome: string;
+	cargo: string | null;
+	dias: DiaPendente[];
+}
+
+export interface Pendencias {
+	inicio: string;
+	fim: string;
+	total: number;
+	colaboradores: PendenciaColaborador[];
+}
+
 export const adminService = {
 	dashboard: (data?: string) =>
-		get<DashboardMetrics>(`/admin/dashboard${data ? `?data=${data}` : ''}`)
+		get<DashboardMetrics>(`/admin/dashboard${data ? `?data=${data}` : ''}`),
+
+	/** Dias em aberto (marcação ímpar) do mês, por colaborador. */
+	pendencias: (mes?: string) => get<Pendencias>(`/admin/pendencias${mes ? `?mes=${mes}` : ''}`)
 };

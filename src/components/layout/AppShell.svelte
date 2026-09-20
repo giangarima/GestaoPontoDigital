@@ -37,6 +37,7 @@
 		{ href: resolve('/admin/justificativas', {}), label: 'Justificativas', icon: 'approval' },
 		{ href: resolve('/admin/ferias', {}), label: 'Férias', icon: 'vacations' },
 		{ href: resolve('/admin/relatorios', {}), label: 'Relatórios', icon: 'report' },
+		{ href: resolve('/admin/pendencias', {}), label: 'Dias em aberto', icon: 'alert' },
 		{ href: resolve('/admin/ajustes', {}), label: 'Ajustes', icon: 'check-circle' },
 		{ href: resolve('/admin/auditoria', {}), label: 'Auditoria', icon: 'shield' }
 	];
