@@ -41,7 +41,8 @@ async function main() {
 	const r = await seedEmpresaImportada(prisma, senhaHash);
 
 	console.log(
-		`✓ Seed concluído — Empresa 1: ${r.colaboradores} colaboradores, ${r.departamentos} departamentos,\n` +
+		`✓ Seed concluído — Empresa 1: ${r.colaboradores} colaboradores ` +
+			`(${r.desligados} desligados), ${r.departamentos} departamentos,\n` +
 			`  ${r.jornadas} jornadas, ` +
 			`${r.originais} batidas, ${r.inclusoes} inclusões, ${r.anulacoes} anulações, ` +
 			`${r.ausencias} ausências (NSR 1..${r.ultimoNsr}).`

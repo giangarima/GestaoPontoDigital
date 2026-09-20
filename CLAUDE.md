@@ -20,7 +20,7 @@ npm run test:db      # testes de integração: sobe postgres-test (docker, porta
                      # recria o schema via migrate deploy e roda tests/db/ (recusa banco não-local)
 npm run test:all     # os dois
 npm run db:migrate   # cria/aplica migration (após mudar schema.prisma)
-npm run db:seed      # popula a Empresa 1: 21 colaboradores, 5 jornadas, 6.760 marcações
+npm run db:seed      # popula a Empresa 1: 21 colaboradores (7 desligados), 6.760 marcações
 npm run db:studio    # abre Prisma Studio
 npm run db:reset     # reseta DB e roda seed
 ```
@@ -102,9 +102,15 @@ sábado em meio período. Serviu de conferência do cálculo: 1.728 de 1.733 dia
 minuto (99,7%) contra a apuração do sistema de origem. Os arquivos-fonte não estão no
 repositório e não são necessários.
 
-**O seed não cobre** (não existe nos arquivos de origem): ajuste vinculado
-(`registroSubstitutoId`), ausência de tipo `ferias` e ausência pendente de aprovação. Esses caminhos estão cobertos por testes
-(`tests/db/`), não por dados de seed.
+**Vínculo e ausências são inferidos**, porque o AFDT não os registra: quem passou mais de 31
+dias sem bater até o fim do período está desligado (`deletedAt`); sequências de dias sem
+registro dentro do vínculo viram férias (15 dias úteis ou mais) ou atestado (2 a 14), e três
+atestados ficam `pendente` para a tela de aprovação ter o que mostrar. **Dia solto sem registro
+continua sendo falta injustificada** (82 no período) — zerar a falta tiraria do seed a
+ocorrência que o admin mais precisa enxergar.
+
+**O seed não cobre**: ajuste vinculado (`registroSubstitutoId`), que não existe nos arquivos
+de origem. Esse caminho está coberto por testes (`tests/db/`), não por dados de seed.
 
 ## Qualidade de Código
 

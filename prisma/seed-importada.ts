@@ -85,15 +85,38 @@ interface DadosJson {
 		jornada: number | null;
 		/** Índice em `departamentos`. */
 		departamento: number;
+		/**
+		 * Dia do desligamento (soft delete). O AFDT não registra rescisão, então é
+		 * inferido: quem passou mais de 31 dias sem bater até o fim do período saiu
+		 * da empresa. Sem isso o sistema contaria falta por meses a fio para quem
+		 * simplesmente não trabalha mais ali.
+		 */
+		desligamento?: string;
 		/** Caso RH: gerencia (role="admin") **e** bate ponto. Ver seedEmpresaImportada. */
 		admin?: boolean;
 	}[];
 	dias: DiaJson[];
-	ausencias: { c: number; inicio: string; fim: string; tipo: string; motivo: string }[];
+	/**
+	 * Ausências. As de tipo "outro" vieram do ACJEF (dias em que a origem creditou
+	 * a jornada sem marcação). As demais são inferidas das sequências de dias sem
+	 * registro dentro do vínculo: série longa vira férias, série curta vira
+	 * atestado, e o dia solto continua sendo falta — zerar a falta injustificada
+	 * tiraria do seed justamente a ocorrência que o admin precisa enxergar.
+	 */
+	ausencias: {
+		c: number;
+		inicio: string;
+		fim: string;
+		tipo: string;
+		motivo: string;
+		/** Ausente = "aprovada". Algumas ficam "pendente" para a tela de aprovação. */
+		status?: string;
+	}[];
 }
 
 export interface ResumoImportada {
 	colaboradores: number;
+	desligados: number;
 	departamentos: number;
 	/** E-mail do colaborador que também é admin (caso RH), se houver. */
 	rh: string | null;
@@ -218,6 +241,7 @@ export async function seedEmpresaImportada(
 				departamentoId: departamentoIds[c.departamento],
 				status: 'ativo',
 				dataAdmissao: dataPura(c.admissao),
+				deletedAt: c.desligamento ? dataPura(c.desligamento) : null,
 				jornadaId: c.jornada === null ? undefined : jornadaIds[c.jornada]
 			}
 		});
@@ -336,6 +360,7 @@ export async function seedEmpresaImportada(
 	}
 
 	for (const a of dados.ausencias) {
+		const pendente = a.status === 'pendente';
 		await prisma.ausencia.create({
 			data: {
 				colaboradorId: colaboradorIds[a.c],
@@ -344,9 +369,10 @@ export async function seedEmpresaImportada(
 				dataInicio: dataPura(a.inicio),
 				dataFim: dataPura(a.fim),
 				motivo: a.motivo,
-				status: 'aprovada',
-				revisadoPor: admin.id,
-				revisadoEm: dataPura(a.inicio)
+				status: pendente ? 'pendente' : 'aprovada',
+				// Pendente ainda não passou por ninguém: sem revisor e sem data.
+				revisadoPor: pendente ? null : admin.id,
+				revisadoEm: pendente ? null : dataPura(a.inicio)
 			}
 		});
 	}
@@ -358,6 +384,7 @@ export async function seedEmpresaImportada(
 
 	return {
 		colaboradores: colaboradorIds.length,
+		desligados: dados.colaboradores.filter((c) => c.desligamento).length,
 		departamentos: departamentoIds.length,
 		rh: dados.colaboradores.find((c) => c.admin)?.email ?? null,
 		jornadas: jornadaIds.length,
