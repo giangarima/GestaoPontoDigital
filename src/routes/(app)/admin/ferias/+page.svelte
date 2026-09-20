@@ -10,8 +10,13 @@
 	import Button from '@/components/ui/Button.svelte';
 	import Card from '@/components/ui/Card.svelte';
 	import ApprovalCard from '@/components/ApprovalCard.svelte';
+	import Paginacao from '@/components/ui/Paginacao.svelte';
 
 	let lista = $state<Ferias[]>([]);
+
+	const POR_PAGINA = 20;
+	let pagina = $state(1);
+	const visiveis = $derived(lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA));
 	let colaboradores = $state<Colaborador[]>([]);
 	let errorMsg = $state('');
 	let openId = $state<string | null>(null);
@@ -131,7 +136,7 @@
 		</Card>
 	{:else}
 		<div class="list">
-			{#each lista as f (f.id)}
+			{#each visiveis as f (f.id)}
 				{@const isOpen = openId === f.id}
 				<ApprovalCard
 					nome={f.colaboradorNome}
@@ -162,6 +167,8 @@
 				</ApprovalCard>
 			{/each}
 		</div>
+
+		<Paginacao bind:pagina total={lista.length} porPagina={POR_PAGINA} rotulo="períodos" />
 	{/if}
 </section>
 

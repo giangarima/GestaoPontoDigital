@@ -15,6 +15,7 @@
 	import Button from '@/components/ui/Button.svelte';
 	import Card from '@/components/ui/Card.svelte';
 	import Icon from '@/components/ui/Icon.svelte';
+	import Paginacao from '@/components/ui/Paginacao.svelte';
 
 	const hoje = new Date();
 	const mesDefault = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
@@ -26,11 +27,20 @@
 	// SvelteSet já é reativo por si: muta no lugar, sem $state em volta.
 	const expandido = new SvelteSet<string>();
 
+	// A quebra é por colaborador, não por dia: cada card já é uma unidade, e
+	// separar os dias de uma mesma pessoa entre páginas atrapalharia o tratamento.
+	const POR_PAGINA = 10;
+	let pagina = $state(1);
+	const visiveis = $derived(
+		dados ? dados.colaboradores.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA) : []
+	);
+
 	async function carregar() {
 		loading = true;
 		errorMsg = '';
 		try {
 			dados = await adminService.pendencias(mes);
+			pagina = 1;
 			expandido.clear();
 			// Um colaborador só: já abre, poupa um clique.
 			if (dados.colaboradores.length === 1) expandido.add(dados.colaboradores[0].colaboradorId);
@@ -100,7 +110,7 @@
 		</div>
 
 		<div class="lista">
-			{#each dados.colaboradores as c (c.colaboradorId)}
+			{#each visiveis as c (c.colaboradorId)}
 				{@const aberto = expandido.has(c.colaboradorId)}
 				<Card>
 					<button
@@ -154,6 +164,13 @@
 				</Card>
 			{/each}
 		</div>
+
+		<Paginacao
+			bind:pagina
+			total={dados.colaboradores.length}
+			porPagina={POR_PAGINA}
+			rotulo="colaboradores"
+		/>
 
 		<p class="rodape muted">
 			Marcações em destaque já foram incluídas no tratamento. O lançamento da marcação faltante

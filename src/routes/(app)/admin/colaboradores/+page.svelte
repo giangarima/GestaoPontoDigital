@@ -8,6 +8,7 @@
 	import ConfirmarExclusao from '@/components/colaboradores/ConfirmarExclusao.svelte';
 	import type { Colaborador, ColaboradorFormData, StatusColaborador } from '@/types/colaborador';
 	import Button from '@/components/ui/Button.svelte';
+	import Paginacao from '@/components/ui/Paginacao.svelte';
 
 	// ── Estado da UI ──────────────────────────────────────────────────────────
 	let carregando = $state(true);
@@ -38,6 +39,23 @@
 
 			return matchBusca && matchStatus;
 		});
+	});
+
+	const POR_PAGINA = 20;
+	let pagina = $state(1);
+	const visiveis = $derived(
+		colaboradoresFiltrados().slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
+	);
+
+	// Busca e filtro encurtam a lista: a página corrente deixaria de fazer
+	// sentido, então volta para a primeira sempre que o recorte muda. Guardar o
+	// recorte anterior evita voltar à página 1 quando só a lista foi recarregada.
+	let recorteAnterior = '';
+	$effect(() => {
+		const recorte = `${busca}|${filtroStatus}`;
+		if (recorte === recorteAnterior) return;
+		recorteAnterior = recorte;
+		pagina = 1;
 	});
 
 	// ── Carregamento inicial ──────────────────────────────────────────────────
@@ -203,7 +221,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each colaboradoresFiltrados() as colaborador (colaborador.id)}
+					{#each visiveis as colaborador (colaborador.id)}
 						<tr>
 							<td>
 								<div class="colaborador-info">
@@ -234,6 +252,13 @@
 				</tbody>
 			</table>
 		</div>
+
+		<Paginacao
+			bind:pagina
+			total={colaboradoresFiltrados().length}
+			porPagina={POR_PAGINA}
+			rotulo="colaboradores"
+		/>
 	{/if}
 </section>
 
