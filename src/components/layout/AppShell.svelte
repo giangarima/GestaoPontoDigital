@@ -9,6 +9,7 @@
 	import { resolve } from '$app/paths';
 	import type { Snippet } from 'svelte';
 	import { isAdmin, user, clearUser } from '@/store/auth.store';
+	import { resumoAdmin } from '@/store/resumo.store';
 	import { authService } from '@/services/auth.service';
 	import Avatar from '@/components/ui/Avatar.svelte';
 	import Icon, { type IconName } from '@/components/ui/Icon.svelte';
@@ -21,28 +22,71 @@
 	let { children }: Props = $props();
 
 	type NavItem = { href: string; label: string; icon: IconName; badge?: number };
+	/** Título `null` = grupo sem cabeçalho (menu do colaborador, que é curto). */
+	type NavGrupo = { titulo: string | null; itens: NavItem[] };
 
-	const NAV_COLAB: NavItem[] = [
-		{ href: resolve('/colaborador/registro', {}), label: 'Registrar Ponto', icon: 'clock' },
-		{ href: resolve('/colaborador/historico', {}), label: 'Histórico', icon: 'history' },
-		{ href: resolve('/colaborador/justificativas', {}), label: 'Justificativas', icon: 'approval' }
+	const NAV_COLAB: NavGrupo[] = [
+		{
+			titulo: null,
+			itens: [
+				{ href: resolve('/colaborador/registro', {}), label: 'Registrar Ponto', icon: 'clock' },
+				{ href: resolve('/colaborador/historico', {}), label: 'Histórico', icon: 'history' },
+				{
+					href: resolve('/colaborador/justificativas', {}),
+					label: 'Justificativas',
+					icon: 'approval'
+				}
+			]
+		}
 	];
 
-	const NAV_ADMIN: NavItem[] = [
-		{ href: resolve('/admin/dashboard', {}), label: 'Dashboard', icon: 'dashboard' },
-		{ href: resolve('/admin/empresa', {}), label: 'Empresa', icon: 'building' },
-		{ href: resolve('/admin/colaboradores', {}), label: 'Colaboradores', icon: 'users' },
-		{ href: resolve('/admin/departamentos', {}), label: 'Departamentos', icon: 'handshake' },
-		{ href: resolve('/admin/jornadas', {}), label: 'Jornadas', icon: 'clock' },
-		{ href: resolve('/admin/justificativas', {}), label: 'Justificativas', icon: 'approval' },
-		{ href: resolve('/admin/ferias', {}), label: 'Férias', icon: 'vacations' },
-		{ href: resolve('/admin/relatorios', {}), label: 'Relatórios', icon: 'report' },
-		{ href: resolve('/admin/pendencias', {}), label: 'Dias em aberto', icon: 'alert' },
-		{ href: resolve('/admin/ajustes', {}), label: 'Ajustes', icon: 'check-circle' },
-		{ href: resolve('/admin/auditoria', {}), label: 'Auditoria', icon: 'shield' }
-	];
+	/**
+	 * O menu do admin tem onze itens; sem agrupamento vira uma lista plana em que
+	 * o que se usa todo dia some no meio do cadastro. A separação é por frequência
+	 * de uso, não por entidade.
+	 */
+	const navAdmin = $derived<NavGrupo[]>([
+		{
+			titulo: 'Dia a dia',
+			itens: [
+				{ href: resolve('/admin/dashboard', {}), label: 'Dashboard', icon: 'dashboard' },
+				{
+					href: resolve('/admin/pendencias', {}),
+					label: 'Dias em aberto',
+					icon: 'alert',
+					badge: $resumoAdmin.diasEmAberto
+				},
+				{
+					href: resolve('/admin/justificativas', {}),
+					label: 'Justificativas',
+					icon: 'approval',
+					badge: $resumoAdmin.justificativasPendentes
+				},
+				{ href: resolve('/admin/ajustes', {}), label: 'Ajustes', icon: 'check-circle' }
+			]
+		},
+		{
+			titulo: 'Cadastros',
+			itens: [
+				{ href: resolve('/admin/empresa', {}), label: 'Empresa', icon: 'building' },
+				{ href: resolve('/admin/colaboradores', {}), label: 'Colaboradores', icon: 'users' },
+				{ href: resolve('/admin/departamentos', {}), label: 'Departamentos', icon: 'handshake' },
+				{ href: resolve('/admin/jornadas', {}), label: 'Jornadas', icon: 'clock' },
+				{ href: resolve('/admin/ferias', {}), label: 'Férias', icon: 'vacations' }
+			]
+		},
+		{
+			titulo: 'Relatórios e conformidade',
+			itens: [
+				{ href: resolve('/admin/relatorios', {}), label: 'Relatórios', icon: 'report' },
+				{ href: resolve('/admin/auditoria', {}), label: 'Auditoria', icon: 'shield' }
+			]
+		}
+	]);
 
-	const navItems = $derived($isAdmin ? NAV_ADMIN : NAV_COLAB);
+	const navGrupos = $derived($isAdmin ? navAdmin : NAV_COLAB);
+	/** Lista plana para a navegação compacta do mobile, que não tem cabeçalho. */
+	const navItems = $derived(navGrupos.flatMap((g) => g.itens));
 
 	const initials = $derived(
 		$user
@@ -77,17 +121,22 @@
 			</div>
 
 			<nav class="sidebar__nav">
-				{#each navItems as item (item.href)}
-					{@const active = isActive(item.href)}
-					<a {...{ href: item.href }} class="nav-item" class:is-active={active}>
-						<span class="nav-item__icon">
-							<Icon name={item.icon} />
-						</span>
-						<span class="nav-item__label">{item.label}</span>
-						{#if item.badge && !active}
-							<span class="nav-item__badge">{item.badge}</span>
-						{/if}
-					</a>
+				{#each navGrupos as grupo (grupo.titulo ?? 'unico')}
+					{#if grupo.titulo}
+						<p class="sidebar__grupo">{grupo.titulo}</p>
+					{/if}
+					{#each grupo.itens as item (item.href)}
+						{@const active = isActive(item.href)}
+						<a {...{ href: item.href }} class="nav-item" class:is-active={active}>
+							<span class="nav-item__icon">
+								<Icon name={item.icon} />
+							</span>
+							<span class="nav-item__label">{item.label}</span>
+							{#if item.badge}
+								<span class="nav-item__badge">{item.badge}</span>
+							{/if}
+						</a>
+					{/each}
 				{/each}
 			</nav>
 		</div>
@@ -168,6 +217,20 @@
 		gap: 0.375rem;
 	}
 
+	.sidebar__grupo {
+		margin: 1rem 0 0.25rem;
+		padding: 0 1rem;
+		font-size: 0.6875rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--color-sidebar-icon);
+	}
+
+	.sidebar__grupo:first-child {
+		margin-top: 0;
+	}
+
 	.nav-item {
 		display: flex;
 		align-items: center;
@@ -200,10 +263,11 @@
 		color: var(--color-sidebar-item-active-fg);
 	}
 
+	/* Âmbar, não vermelho: é trabalho pendente do admin, não falha do sistema. */
 	.nav-item__badge {
 		margin-left: auto;
-		background: var(--color-danger);
-		color: #fff;
+		background: var(--color-warning-dot);
+		color: #422006;
 		border-radius: var(--radius-pill);
 		font-size: 0.7rem;
 		font-weight: 700;

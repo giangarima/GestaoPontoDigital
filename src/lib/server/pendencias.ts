@@ -21,6 +21,7 @@ import { prisma } from '@/lib/server/db';
 import { apurarPeriodo } from '@/lib/server/espelho/montar';
 import {
 	ausenciaNoPeriodo,
+	diaDe,
 	instantesDoPeriodo,
 	minutosDoDia,
 	type Dia
@@ -163,4 +164,62 @@ export async function pendenciasDoPeriodo(
 		total: resultado.reduce((soma, c) => soma + c.dias.length, 0),
 		colaboradores: resultado
 	};
+}
+
+/**
+ * Só a CONTAGEM de dias em aberto, numa agregação.
+ *
+ * `pendenciasDoPeriodo` traz o mês inteiro de marcações e roda `apurarPeriodo`
+ * por colaborador para montar a lista. Isso se paga na tela de pendências, que
+ * precisa da lista; não se paga no dashboard e no badge do menu, que consultam a
+ * cada atualização automática e só querem um número.
+ *
+ * A equivalência com `pendenciasDoPeriodo().total` é garantida por teste
+ * (`tests/db/pendencias.test.ts`) — sem ele os dois cálculos divergiriam na
+ * primeira mudança de regra e o badge passaria a mentir sobre `/admin/pendencias`.
+ *
+ * Replica a ocorrência `Incompleto` de `espelho/montar.ts`: dia com número ímpar
+ * de marcações válidas, dentro do vínculo, sem ausência aprovada e já encerrado.
+ * Jornada não entra na conta — dia de folga com marcação ímpar também é
+ * `Incompleto`.
+ *
+ * Fusos, com a mesma assimetria do resto do sistema: marcação vira dia em
+ * Brasília (UTC−3, como `diaDe`); `dataAdmissao` e as datas de `Ausencia` são
+ * datas puras lidas em UTC (como `diaDaDataPura`).
+ */
+export async function contarDiasEmAberto(
+	empresaId: string,
+	inicio: Dia,
+	fim: Dia,
+	emitidoEm: Date = new Date()
+): Promise<number> {
+	const janela = instantesDoPeriodo(inicio, fim);
+	const hoje = diaDe(emitidoEm);
+
+	const linhas = await prisma.$queryRaw<{ total: bigint }[]>`
+		SELECT count(*)::bigint AS total FROM (
+			SELECT r.colaborador_id AS cid,
+			       ((r.marcado_em AT TIME ZONE 'UTC') - interval '3 hours')::date AS dia
+			FROM registros r
+			JOIN colaboradores c ON c.id = r.colaborador_id AND c.deleted_at IS NULL
+			WHERE r.empresa_id = ${empresaId}
+			  AND r.marcado_em >= ${janela.gte}
+			  AND r.marcado_em <= ${janela.lte}
+			  AND NOT EXISTS (
+			        SELECT 1 FROM registro_anulacoes an WHERE an.registro_id = r.id)
+			GROUP BY 1, 2
+			HAVING count(*) % 2 = 1
+		) d
+		JOIN colaboradores c2 ON c2.id = d.cid
+		WHERE d.dia < ${hoje}::date
+		  AND (c2.data_admissao IS NULL
+		       OR (c2.data_admissao AT TIME ZONE 'UTC')::date <= d.dia)
+		  AND NOT EXISTS (
+		        SELECT 1 FROM ausencias a
+		        WHERE a.colaborador_id = d.cid
+		          AND a.status = 'aprovada'
+		          AND (a.data_inicio AT TIME ZONE 'UTC')::date <= d.dia
+		          AND (a.data_fim    AT TIME ZONE 'UTC')::date >= d.dia)`;
+
+	return Number(linhas[0]?.total ?? 0);
 }
