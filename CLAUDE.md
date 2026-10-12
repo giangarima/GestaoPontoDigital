@@ -4,7 +4,7 @@ Guia para o Claude Code (claude.ai/code) trabalhar neste repositório.
 
 ## Visão Geral
 
-**Ponto Digital** — sistema de gestão de ponto eletrônico em SvelteKit + Svelte 5 + TypeScript. Dois papéis: `admin` (gerencia colaboradores, jornadas e dashboard) e `colaborador` (registra ponto via login manual).
+**On Time** — sistema de gestão de ponto eletrônico em SvelteKit + Svelte 5 + TypeScript. Dois papéis: `admin` (gerencia colaboradores, jornadas e dashboard) e `colaborador` (registra ponto via login manual).
 
 ## Comandos
 

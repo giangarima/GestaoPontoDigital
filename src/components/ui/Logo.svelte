@@ -1,6 +1,5 @@
 <!--
   @component Logo
-  @description Marca "Ponto Digital" com ícone de relógio em quadrado azul.
 -->
 <script lang="ts">
 	interface Props {
@@ -27,7 +26,7 @@
 		</svg>
 	</div>
 	<span class="logo__text" class:logo__text--dark={dark} style="font-size: {d.font};">
-		Ponto Digital
+		On Time
 	</span>
 </div>
 

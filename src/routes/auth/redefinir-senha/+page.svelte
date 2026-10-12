@@ -56,7 +56,7 @@
 </script>
 
 <svelte:head>
-	<title>Redefinir senha — Ponto Digital</title>
+	<title>Redefinir senha — On Time</title>
 </svelte:head>
 
 <div class="login-page">

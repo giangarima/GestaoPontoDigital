@@ -312,7 +312,7 @@
 </script>
 
 <svelte:head>
-	<title>Jornadas — Ponto Digital</title>
+	<title>Jornadas</title>
 </svelte:head>
 
 <section class="admin-page">

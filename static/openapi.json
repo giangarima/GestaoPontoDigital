@@ -1,7 +1,7 @@
 {
 	"openapi": "3.0.3",
 	"info": {
-		"title": "Ponto Digital API",
+		"title": "On Time API",
 		"version": "1.0.0",
 		"description": "API do sistema de ponto eletrônico. Implementada via SvelteKit +server.ts com persistência em PostgreSQL via Prisma. Autenticação por JWT (HS256, validade 12h) enviado no header Authorization: Bearer <token>.\n\nTodas as entidades são escopadas por empresa (multi-tenant): o admin só enxerga dados da própria empresa.\n**Credenciais de teste (seed):**\n- Admin: admin@empresa1.com | Senha123\n- RH (admin + colaborador): eduarda@empresa1.com | Senha123\n- Colaboradores: <primeironome>@empresa1.com | Senha123 (o login também aceita CPF)"
 	},

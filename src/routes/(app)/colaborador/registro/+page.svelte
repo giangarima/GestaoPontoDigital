@@ -139,18 +139,13 @@
 </script>
 
 <svelte:head>
-	<title>Registrar Ponto — Ponto Digital</title>
+	<title>Registrar Ponto</title>
 </svelte:head>
 
 <section class="registro">
 	<div class="clock">
 		<span class="clock__date">{dataBrasiliaExtenso(now)}</span>
 		<span class="clock__time">{horaBrasilia(now)}</span>
-		<span class="clock__fonte" class:clock__fonte--local={desvioMs === null}>
-			{desvioMs === null
-				? 'Hora do dispositivo — sem sincronizar com o servidor'
-				: 'Hora do servidor de ponto · Brasília'}
-		</span>
 		{#if totalMinutes > 0}
 			<span class="clock__worked">
 				<Icon name="clock" size={13} />

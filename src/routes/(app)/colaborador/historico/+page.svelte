@@ -98,7 +98,7 @@
 </script>
 
 <svelte:head>
-	<title>Histórico — Ponto Digital</title>
+	<title>Histórico</title>
 </svelte:head>
 
 <section class="historico">

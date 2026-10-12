@@ -122,7 +122,7 @@
 </script>
 
 <svelte:head>
-	<title>Departamentos — Ponto Digital</title>
+	<title>Departamentos — On Time</title>
 </svelte:head>
 
 <section class="admin-page">

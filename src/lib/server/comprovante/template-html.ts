@@ -9,7 +9,7 @@ export function renderEmailHtmlComprovante(data: ComprovanteData): string {
 	return `
   <div style="font-family: 'DM Sans', Arial, sans-serif; max-width:520px; margin:0 auto; color:#111827;">
     <div style="background:#2563eb;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0;">
-      <div style="font-size:11px;opacity:0.9;">PONTO DIGITAL</div>
+      <div style="font-size:11px;opacity:0.9;">On Time</div>
       <h1 style="margin:6px 0 0;font-size:18px;">Comprovante de Registro de Ponto do Trabalhador</h1>
     </div>
     <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 12px 12px;">
@@ -45,7 +45,7 @@ export function renderEmailHtmlComprovante(data: ComprovanteData): string {
 }
 
 export function renderEmailTextComprovante(data: ComprovanteData): string {
-	return `PONTO DIGITAL\nComprovante de Registro de Ponto do Trabalhador\n\nOlá, ${data.colaboradorNome}.\n\nSua marcação foi registrada com sucesso. O comprovante legal em PDF está em anexo.\n\nEMPRESA\nNome: ${data.empresaNome}\nCNPJ: ${data.empresaCnpj ?? ''}\n\nCOLABORADOR\nNome: ${data.colaboradorNome}\nCPF: ${data.colaboradorCpf}\n\nMARCAÇÃO\nTipo: ${data.tipoLabel}\nData: ${data.data}\nHora: ${data.hora}\nNSR: ${data.nsrFormatado}\nHash (SHA-256): ${data.hashMarcacao}\nREP-P (registro no INPI): ${data.repInpi}\n\nHorário registrado pelo servidor. Validade legal conforme Portaria MTP 671/2021.\n\nAnexo: ${data.nomeArquivo}`;
+	return `On Time\nComprovante de Registro de Ponto do Trabalhador\n\nOlá, ${data.colaboradorNome}.\n\nSua marcação foi registrada com sucesso. O comprovante legal em PDF está em anexo.\n\nEMPRESA\nNome: ${data.empresaNome}\nCNPJ: ${data.empresaCnpj ?? ''}\n\nCOLABORADOR\nNome: ${data.colaboradorNome}\nCPF: ${data.colaboradorCpf}\n\nMARCAÇÃO\nTipo: ${data.tipoLabel}\nData: ${data.data}\nHora: ${data.hora}\nNSR: ${data.nsrFormatado}\nHash (SHA-256): ${data.hashMarcacao}\nREP-P (registro no INPI): ${data.repInpi}\n\nHorário registrado pelo servidor. Validade legal conforme Portaria MTP 671/2021.\n\nAnexo: ${data.nomeArquivo}`;
 }
 
 export default { renderEmailHtmlComprovante, renderEmailTextComprovante };

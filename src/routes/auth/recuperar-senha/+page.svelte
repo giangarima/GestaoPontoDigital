@@ -63,7 +63,7 @@
 </script>
 
 <svelte:head>
-	<title>Recuperar senha — Ponto Digital</title>
+	<title>Recuperar senha — On Time</title>
 </svelte:head>
 
 <div class="login-page">

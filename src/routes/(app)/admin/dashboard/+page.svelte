@@ -376,7 +376,7 @@
 </script>
 
 <svelte:head>
-	<title>Dashboard — Ponto Digital</title>
+	<title>Dashboard</title>
 </svelte:head>
 
 <section class="admin-page">

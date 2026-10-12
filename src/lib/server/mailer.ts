@@ -54,7 +54,7 @@ export async function sendPasswordResetEmail(
 		<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #111827;">
 			<h2 style="margin-bottom: 0.5rem;">Redefinição de senha</h2>
 			<p>Olá, ${nome}.</p>
-			<p>Recebemos um pedido para redefinir a senha da sua conta no <strong>Ponto Digital</strong>.
+			<p>Recebemos um pedido para redefinir a senha da sua conta no <strong>On Time</strong>.
 			Clique no botão abaixo para criar uma nova senha. Este link expira em 1 hora.</p>
 			<p style="margin: 1.5rem 0;">
 				<a href="${resetUrl}"
@@ -70,9 +70,9 @@ export async function sendPasswordResetEmail(
 	`;
 
 	await t.sendMail({
-		from: process.env.SMTP_FROM ?? 'Ponto Digital <no-reply@pontodigital.app>',
+		from: process.env.SMTP_FROM ?? 'On Time <no-reply@pontodigital.app>',
 		to,
-		subject: 'Redefinição de senha — Ponto Digital',
+		subject: 'Redefinição de senha — On Time',
 		html
 	});
 }
@@ -97,7 +97,7 @@ export async function sendWelcomeEmail(
 
 	const html = `
 		<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #111827;">
-			<h2 style="margin-bottom: 0.5rem;">Bem-vindo(a) ao Ponto Digital</h2>
+			<h2 style="margin-bottom: 0.5rem;">Bem-vindo(a) ao On Time</h2>
 			<p>Olá, ${nome}.</p>
 			<p>Sua conta de colaborador foi criada. Para começar a registrar seu ponto,
 			clique no botão abaixo e defina sua senha de acesso. Este link expira em 3 dias.</p>
@@ -115,9 +115,9 @@ export async function sendWelcomeEmail(
 	`;
 
 	await t.sendMail({
-		from: process.env.SMTP_FROM ?? 'Ponto Digital <no-reply@pontodigital.app>',
+		from: process.env.SMTP_FROM ?? 'On Time <no-reply@pontodigital.app>',
 		to,
-		subject: 'Bem-vindo ao Ponto Digital — crie sua senha',
+		subject: 'Bem-vindo ao On Time — crie sua senha',
 		html
 	});
 }
@@ -145,7 +145,7 @@ export async function sendComprovanteEmail(input: {
 	}
 
 	await t.sendMail({
-		from: process.env.SMTP_FROM ?? 'Ponto Digital <no-reply@pontodigital.app>',
+		from: process.env.SMTP_FROM ?? 'On Time <no-reply@pontodigital.app>',
 		to,
 		subject,
 		html: data.emailHtml ?? undefined,

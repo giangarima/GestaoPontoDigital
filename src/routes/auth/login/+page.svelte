@@ -96,7 +96,7 @@
 </script>
 
 <svelte:head>
-	<title>Login — Ponto Digital</title>
+	<title>Login</title>
 </svelte:head>
 
 <div class="login-page">
