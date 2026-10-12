@@ -105,7 +105,7 @@
 		display: block;
 		margin-bottom: 0.75rem;
 		font-size: 0.875rem;
-		color: #475569;
+		color: var(--color-text-muted);
 	}
 	input {
 		display: block;

@@ -126,9 +126,9 @@
 		min-width: 2rem;
 		height: 2rem;
 		padding: 0 0.5rem;
-		border: 1px solid var(--color-border, rgba(127, 127, 127, 0.25));
+		border: 1px solid var(--color-border);
 		border-radius: 0.5rem;
-		background: var(--color-surface, transparent);
+		background: var(--color-surface);
 		color: var(--color-text);
 		font: inherit;
 		font-size: 0.875rem;
@@ -140,7 +140,7 @@
 	}
 
 	.paginacao__btn:hover:not(:disabled) {
-		border-color: var(--color-primary, #2563eb);
+		border-color: var(--color-primary);
 	}
 
 	.paginacao__btn:disabled {
@@ -149,9 +149,9 @@
 	}
 
 	.paginacao__btn--atual {
-		background: var(--color-primary, #2563eb);
-		border-color: var(--color-primary, #2563eb);
-		color: #fff;
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+		color: var(--color-on-primary);
 		font-weight: 600;
 	}
 

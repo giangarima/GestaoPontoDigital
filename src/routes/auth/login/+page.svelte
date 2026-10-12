@@ -8,6 +8,7 @@
 	import { resolve } from '$app/paths';
 	import Button from '@/components/ui/Button.svelte';
 	import Logo from '@/components/ui/Logo.svelte';
+	import SeletorTema from '@/components/ui/SeletorTema.svelte';
 	import { authService } from '@/services/auth.service';
 	import { setUser } from '@/store/auth.store';
 	import { isValidEmail, isValidCpf, isNotEmpty, formatCpfInput } from '@/utils/validators';
@@ -109,6 +110,7 @@
 	>
 		<div class="brand">
 			<Logo size="lg" />
+			<SeletorTema />
 		</div>
 
 		<h1>Entrar</h1>
@@ -209,6 +211,7 @@
 		background: var(--color-surface);
 		padding: 2.5rem 2rem;
 		border-radius: var(--radius-lg);
+		border: 1px solid var(--color-border);
 		box-shadow: var(--shadow-elev);
 		width: 100%;
 		max-width: 400px;
@@ -218,6 +221,10 @@
 	}
 
 	.brand {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
 		margin-bottom: 1rem;
 	}
 
@@ -257,7 +264,7 @@
 
 	.tab--active {
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-on-primary);
 	}
 
 	.field {
@@ -269,7 +276,7 @@
 	label {
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #374151;
+		color: var(--color-text-secondary);
 	}
 
 	input {

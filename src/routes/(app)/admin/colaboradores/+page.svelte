@@ -289,7 +289,7 @@
 <style>
 	.page-subtitulo {
 		font-size: 0.875rem;
-		color: var(--color-text-muted, #666);
+		color: var(--color-text-muted);
 		margin: 0.25rem 0 0;
 	}
 
@@ -305,27 +305,27 @@
 		flex: 1;
 		min-width: 200px;
 		padding: 0.625rem 0.875rem;
-		border: 1.5px solid var(--color-border, #e2e8f0);
+		border: 1.5px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		font-size: 0.9rem;
-		background: var(--color-input-bg, #f8fafc);
-		color: var(--color-text, #111);
+		background: var(--color-surface-muted);
+		color: var(--color-text);
 		outline: none;
 		transition: border-color 0.15s;
 	}
 
 	.input-busca:focus {
-		border-color: var(--color-primary, #3b82f6);
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 3px var(--color-primary-ring);
 	}
 
 	.select-status {
 		padding: 0.625rem 0.875rem;
-		border: 1.5px solid var(--color-border, #e2e8f0);
+		border: 1.5px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		font-size: 0.9rem;
-		background: var(--color-input-bg, #f8fafc);
-		color: var(--color-text, #111);
+		background: var(--color-surface-muted);
+		color: var(--color-text);
 		cursor: pointer;
 		outline: none;
 	}
@@ -344,7 +344,7 @@
 	.alerta--erro {
 		background: var(--color-danger-bg);
 		color: var(--color-danger);
-		border: 1px solid #fecaca;
+		border: 1px solid var(--color-danger-border);
 	}
 
 	.alerta button {
@@ -361,7 +361,7 @@
 	.estado-vazio {
 		text-align: center;
 		padding: 4rem 1rem;
-		color: var(--color-text-muted, #666);
+		color: var(--color-text-muted);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -376,8 +376,8 @@
 		display: inline-block;
 		width: 2.5rem;
 		height: 2.5rem;
-		border: 3px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3b82f6);
+		border: 3px solid var(--color-border);
+		border-top-color: var(--color-primary);
 		border-radius: 50%;
 		animation: girar 0.7s linear infinite;
 	}
@@ -391,7 +391,7 @@
 	/* ── Tabela ── */
 	.tabela-wrapper {
 		overflow-x: auto;
-		border: 1px solid var(--color-border, #e2e8f0);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 	}
 
@@ -402,7 +402,7 @@
 	}
 
 	.tabela thead {
-		background: var(--color-surface-alt, #f8fafc);
+		background: var(--color-surface-muted);
 	}
 
 	.tabela th {
@@ -412,8 +412,8 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: var(--color-text-muted, #666);
-		border-bottom: 1px solid var(--color-border, #e2e8f0);
+		color: var(--color-text-muted);
+		border-bottom: 1px solid var(--color-border);
 	}
 
 	.th-acoes {
@@ -422,7 +422,7 @@
 
 	.tabela td {
 		padding: 1rem;
-		border-bottom: 1px solid var(--color-border, #e2e8f0);
+		border-bottom: 1px solid var(--color-border);
 		vertical-align: middle;
 	}
 
@@ -431,7 +431,7 @@
 	}
 
 	.tabela tbody tr:hover {
-		background: var(--color-surface-alt, #f8fafc);
+		background: var(--color-surface-muted);
 	}
 
 	/* ── Célula de colaborador ── */
@@ -445,8 +445,8 @@
 		width: 2.5rem;
 		height: 2.5rem;
 		border-radius: 50%;
-		background: var(--color-primary, #3b82f6);
-		color: #fff;
+		background: var(--color-primary);
+		color: var(--color-on-primary);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -458,29 +458,29 @@
 	.colaborador-nome {
 		display: block;
 		font-weight: 500;
-		color: var(--color-text, #111);
+		color: var(--color-text);
 	}
 
 	.colaborador-email {
 		display: block;
 		font-size: 0.8rem;
-		color: var(--color-text-muted, #666);
+		color: var(--color-text-muted);
 	}
 
 	.colaborador-cargo {
 		display: block;
-		color: var(--color-text, #111);
+		color: var(--color-text);
 	}
 
 	.colaborador-depto {
 		display: block;
 		font-size: 0.8rem;
-		color: var(--color-text-muted, #666);
+		color: var(--color-text-muted);
 	}
 
 	.td-data {
 		white-space: nowrap;
-		color: var(--color-text-muted, #666);
+		color: var(--color-text-muted);
 	}
 
 	/* ── Badges de status ── */
@@ -493,20 +493,20 @@
 	}
 
 	.badge--ativo {
-		background: #dcfce7;
-		color: #166534;
+		background: var(--color-success-bg);
+		color: var(--color-success-strong);
 	}
 	.badge--inativo {
 		background: var(--color-bg);
-		color: #475569;
+		color: var(--color-text-muted);
 	}
 	.badge--ferias {
-		background: #dbeafe;
-		color: #1d4ed8;
+		background: var(--color-primary-soft);
+		color: var(--color-primary-hover);
 	}
 	.badge--afastado {
-		background: #fef9c3;
-		color: #854d0e;
+		background: var(--color-warning-soft);
+		color: var(--color-warning-strong);
 	}
 
 	/* ── Ações ── */
@@ -526,7 +526,7 @@
 	}
 
 	.btn-acao:hover {
-		background: var(--color-border, #e2e8f0);
+		background: var(--color-border);
 	}
 
 	/* ── Botão primário ── */
@@ -544,8 +544,8 @@
 	}
 
 	.btn--primario {
-		background: var(--color-primary, #3b82f6);
-		color: #fff;
+		background: var(--color-primary);
+		color: var(--color-on-primary);
 	}
 
 	.btn--primario:hover {

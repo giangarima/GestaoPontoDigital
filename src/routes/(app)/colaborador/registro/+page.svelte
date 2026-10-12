@@ -272,13 +272,13 @@
 	}
 
 	.clock__date {
-		color: var(--color-text-muted);
+		color: var(--color-sidebar-fg-muted);
 		font-size: 0.8125rem;
 		text-transform: capitalize;
 	}
 
 	.clock__time {
-		color: #f8fafc;
+		color: var(--color-sidebar-fg-strong);
 		font-size: 3rem;
 		font-weight: 700;
 		letter-spacing: -0.03em;
@@ -287,7 +287,7 @@
 	}
 
 	.clock__fonte {
-		color: var(--color-text-muted);
+		color: var(--color-sidebar-fg-muted);
 		font-size: 0.6875rem;
 		letter-spacing: 0.02em;
 	}
@@ -330,7 +330,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: #fff;
+		color: var(--color-on-primary);
 	}
 
 	.step__dot.is-done {
@@ -363,7 +363,7 @@
 	}
 
 	.step__label.is-next {
-		color: #334155;
+		color: var(--color-text-secondary);
 		font-weight: 600;
 	}
 
@@ -416,7 +416,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		background: var(--color-success-bg);
-		color: #15803d;
+		color: var(--color-success);
 		padding: 0.5rem 1rem;
 		border-radius: var(--radius-pill);
 		font-size: 0.875rem;
@@ -460,7 +460,7 @@
 
 	.punch__type {
 		font-weight: 600;
-		color: #334155;
+		color: var(--color-text-secondary);
 		font-size: 0.9rem;
 	}
 

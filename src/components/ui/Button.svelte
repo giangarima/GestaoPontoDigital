@@ -69,21 +69,21 @@
 	}
 
 	.btn--primary {
-		background: var(--color-primary, #2563eb);
-		color: #fff;
+		background: var(--color-primary);
+		color: var(--color-on-primary);
 	}
 	.btn--secondary {
-		background: var(--color-secondary, #64748b);
-		color: #fff;
+		background: var(--color-text-muted);
+		color: var(--color-on-primary);
 	}
 	.btn--outline {
 		background: transparent;
-		border: 2px solid var(--color-primary, #2563eb);
-		color: var(--color-primary, #2563eb);
+		border: 2px solid var(--color-primary);
+		color: var(--color-primary);
 	}
 	.btn--danger {
-		background: var(--color-danger, #dc2626);
-		color: #fff;
+		background: var(--color-danger);
+		color: var(--color-on-primary);
 	}
 
 	.btn__spinner {

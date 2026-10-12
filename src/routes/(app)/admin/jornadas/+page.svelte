@@ -627,6 +627,7 @@
 	/* ── Card ───────────────────────────────────────────────── */
 	.jornada-card {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		padding: 1.25rem;
 		box-shadow: var(--shadow-card);
@@ -677,12 +678,12 @@
 
 	.dia-row__abrev {
 		font-weight: 700;
-		color: #334155;
+		color: var(--color-text-secondary);
 		font-size: 0.75rem;
 	}
 
 	.dia-row__horario {
-		color: #475569;
+		color: var(--color-text-muted);
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -694,8 +695,8 @@
 	.dia-row__total {
 		font-size: 0.7rem;
 		font-weight: 600;
-		color: #2563eb;
-		background: #eff6ff;
+		color: var(--color-primary);
+		background: var(--color-primary-soft);
 		padding: 0.125rem 0.4rem;
 		border-radius: 999px;
 		white-space: nowrap;
@@ -713,13 +714,13 @@
 		gap: 0.5rem;
 		flex-wrap: wrap;
 		padding-top: 0.25rem;
-		border-top: 1px solid #f1f5f9;
+		border-top: 1px solid var(--color-hover);
 	}
 
 	.jornada-card__pendente {
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #2563eb;
+		color: var(--color-primary);
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
@@ -730,7 +731,7 @@
 		width: 0.5rem;
 		height: 0.5rem;
 		border-radius: 50%;
-		background: #2563eb;
+		background: var(--color-primary);
 	}
 
 	.badge {
@@ -741,8 +742,8 @@
 	}
 
 	.badge--blue {
-		background: #eff6ff;
-		color: #2563eb;
+		background: var(--color-primary-soft);
+		color: var(--color-primary);
 	}
 	.badge--muted {
 		background: var(--color-bg);
@@ -753,7 +754,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -763,6 +764,7 @@
 
 	.modal {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		width: 100%;
 		max-width: 520px;
@@ -841,7 +843,7 @@
 	.field input[type='text'],
 	.field input[type='time'],
 	.field input[type='date'] {
-		border: 1.5px solid #cbd5e1;
+		border: 1.5px solid var(--color-border-strong);
 		border-radius: var(--radius-sm);
 		padding: 0.5rem 0.75rem;
 		font-size: 0.9rem;
@@ -852,7 +854,7 @@
 	}
 
 	.field input:focus {
-		border-color: #2563eb;
+		border-color: var(--color-primary);
 	}
 
 	.field--error input {
@@ -888,7 +890,7 @@
 	.toggle-row__check {
 		width: 1rem;
 		height: 1rem;
-		accent-color: #2563eb;
+		accent-color: var(--color-primary);
 		cursor: pointer;
 		flex-shrink: 0;
 	}
@@ -896,7 +898,7 @@
 	.toggle-row__label {
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #334155;
+		color: var(--color-text-secondary);
 	}
 
 	/* ── Horário único ──────────────────────────────────────── */
@@ -957,9 +959,9 @@
 	}
 
 	.dia-chip--ativo {
-		background: #eff6ff;
-		border-color: #2563eb;
-		color: #2563eb;
+		background: var(--color-primary-soft);
+		border-color: var(--color-primary);
+		color: var(--color-primary);
 	}
 
 	/* ── Blocos de dia individual ───────────────────────────── */
@@ -992,7 +994,7 @@
 	.dia-bloco__toggle input[type='checkbox'] {
 		width: 1rem;
 		height: 1rem;
-		accent-color: #2563eb;
+		accent-color: var(--color-primary);
 		cursor: pointer;
 		flex-shrink: 0;
 	}
@@ -1000,7 +1002,7 @@
 	.dia-bloco__nome {
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #334155;
+		color: var(--color-text-secondary);
 	}
 
 	.dia-bloco__horarios {

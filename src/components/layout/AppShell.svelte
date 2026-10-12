@@ -14,6 +14,7 @@
 	import Avatar from '@/components/ui/Avatar.svelte';
 	import Icon, { type IconName } from '@/components/ui/Icon.svelte';
 	import Logo from '@/components/ui/Logo.svelte';
+	import SeletorTema from '@/components/ui/SeletorTema.svelte';
 
 	interface Props {
 		children: Snippet;
@@ -151,17 +152,23 @@
 					</div>
 				</div>
 			{/if}
-			<button class="sidebar__logout" onclick={handleLogout}>
-				<Icon name="logout" size={14} />
-				Sair
-			</button>
+			<div class="sidebar__acoes">
+				<button class="sidebar__logout" onclick={handleLogout}>
+					<Icon name="logout" size={14} />
+					Sair
+				</button>
+				<SeletorTema variante="sidebar" />
+			</div>
 		</div>
 	</aside>
 
 	<div class="main">
 		<header class="topbar">
 			<Logo size="sm" />
-			<Avatar {initials} size={30} />
+			<div class="topbar__acoes">
+				<SeletorTema />
+				<Avatar {initials} size={30} />
+			</div>
 		</header>
 
 		<main class="content">
@@ -250,7 +257,7 @@
 	}
 
 	.nav-item:hover {
-		color: #cbd5e1;
+		color: var(--color-sidebar-fg-hover);
 	}
 
 	.nav-item.is-active {
@@ -267,7 +274,7 @@
 	.nav-item__badge {
 		margin-left: auto;
 		background: var(--color-warning-dot);
-		color: #422006;
+		color: var(--color-on-warning);
 		border-radius: var(--radius-pill);
 		font-size: 0.7rem;
 		font-weight: 700;
@@ -293,7 +300,7 @@
 	}
 
 	.sidebar__user-name {
-		color: #f1f5f9;
+		color: var(--color-sidebar-fg-strong);
 		font-size: 0.8125rem;
 		font-weight: 600;
 		white-space: nowrap;
@@ -302,15 +309,22 @@
 	}
 
 	.sidebar__user-cargo {
-		color: #64748b;
+		color: var(--color-sidebar-fg-muted);
 		font-size: 0.7rem;
+	}
+
+	.sidebar__acoes {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
 	}
 
 	.sidebar__logout {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		color: #64748b;
+		color: var(--color-sidebar-fg-muted);
 		background: none;
 		border: none;
 		cursor: pointer;
@@ -320,7 +334,7 @@
 	}
 
 	.sidebar__logout:hover {
-		color: #cbd5e1;
+		color: var(--color-sidebar-fg-strong);
 	}
 
 	.main {
@@ -338,6 +352,12 @@
 		padding: 0.875rem 1rem;
 		align-items: center;
 		justify-content: space-between;
+	}
+
+	.topbar__acoes {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
 	}
 
 	.content {
@@ -380,7 +400,7 @@
 		top: 6px;
 		right: calc(50% - 16px);
 		background: var(--color-danger);
-		color: #fff;
+		color: var(--color-on-primary);
 		border-radius: var(--radius-pill);
 		font-size: 0.6rem;
 		font-weight: 700;

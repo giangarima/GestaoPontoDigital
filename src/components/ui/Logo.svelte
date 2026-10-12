@@ -21,8 +21,13 @@
 <div class="logo">
 	<div class="logo__icon" style="width: {d.box}px; height: {d.box}px; border-radius: {d.radius};">
 		<svg width={d.icon} height={d.icon} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-			<circle cx="12" cy="12" r="9" stroke="white" stroke-width="2" />
-			<polyline points="12,7 12,12 15,15" stroke="white" stroke-width="2" stroke-linecap="round" />
+			<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
+			<polyline
+				points="12,7 12,12 15,15"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+			/>
 		</svg>
 	</div>
 	<span class="logo__text" class:logo__text--dark={dark} style="font-size: {d.font};">
@@ -39,6 +44,7 @@
 
 	.logo__icon {
 		background: var(--color-primary);
+		color: var(--color-on-primary);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -51,6 +57,6 @@
 	}
 
 	.logo__text--dark {
-		color: #f8fafc;
+		color: var(--color-sidebar-fg-strong);
 	}
 </style>

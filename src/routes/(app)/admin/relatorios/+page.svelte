@@ -468,7 +468,7 @@
 		border-radius: var(--radius-sm);
 		background: var(--color-border-soft);
 		border: 1px solid var(--color-border);
-		color: #475569;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 		font-weight: 600;
 		cursor: pointer;
@@ -516,7 +516,7 @@
 		gap: 0.375rem;
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #374151;
+		color: var(--color-text-secondary);
 	}
 
 	.field input,
@@ -574,7 +574,7 @@
 	.bar__name {
 		width: 90px;
 		font-size: 0.8rem;
-		color: #334155;
+		color: var(--color-text-secondary);
 		font-weight: 500;
 		flex-shrink: 0;
 		white-space: nowrap;
@@ -596,7 +596,7 @@
 		left: 0;
 		top: 0;
 		height: 100%;
-		background: #d1d5db;
+		background: var(--color-border);
 		border-radius: var(--radius-pill);
 	}
 
@@ -639,7 +639,7 @@
 
 	.chip.is-active {
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-on-primary);
 	}
 
 	.table-wrap {
@@ -704,7 +704,7 @@
 	}
 
 	.dash {
-		color: #cbd5e1;
+		color: var(--color-border-strong);
 	}
 
 	.muted {

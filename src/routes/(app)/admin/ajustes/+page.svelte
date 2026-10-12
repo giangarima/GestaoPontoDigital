@@ -95,7 +95,7 @@
 		gap: 0.375rem;
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #374151;
+		color: var(--color-text-secondary);
 	}
 
 	.field input,
@@ -116,8 +116,8 @@
 	}
 
 	.error {
-		background: #fef2f2;
-		color: #b91c1c;
+		background: var(--color-danger-bg);
+		color: var(--color-danger-strong);
 		padding: 0.625rem 0.875rem;
 		border-radius: var(--radius-sm);
 		font-size: 0.875rem;

@@ -126,6 +126,7 @@
 
 	.login-card {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		padding: 2.5rem 2rem;
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-elev);
@@ -163,7 +164,7 @@
 	label {
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #374151;
+		color: var(--color-text-secondary);
 	}
 
 	input {

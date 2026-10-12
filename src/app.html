@@ -4,6 +4,21 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
+		<script>
+			// Tema antes do primeiro paint (sem "piscar" branco no modo escuro).
+			// Mesma chave e mesmos valores de src/store/theme.store.ts.
+			(function () {
+				var t = {};
+				try {
+					t = JSON.parse(localStorage.getItem('ontime-tema') || '{}') || {};
+				} catch (e) {}
+				var escuro = t.modo
+					? t.modo === 'dark'
+					: matchMedia('(prefers-color-scheme: dark)').matches;
+				document.documentElement.dataset.theme = escuro ? 'dark' : 'light';
+				document.documentElement.dataset.accent = t.destaque === 'violeta' ? 'violeta' : 'azul';
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

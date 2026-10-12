@@ -265,8 +265,8 @@
 	}
 
 	.alert--success {
-		background: #ecfdf5;
-		color: #047857;
+		background: var(--color-success-bg);
+		color: var(--color-success-strong);
 	}
 
 	.empty {
@@ -283,6 +283,7 @@
 
 	.card {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		padding: 1.25rem;
 		box-shadow: var(--shadow-card);
@@ -306,7 +307,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -316,6 +317,7 @@
 
 	.modal {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		width: 100%;
 		max-width: 480px;
@@ -382,7 +384,7 @@
 
 	.field input,
 	.field select {
-		border: 1.5px solid #cbd5e1;
+		border: 1.5px solid var(--color-border-strong);
 		border-radius: var(--radius-sm);
 		padding: 0.5rem 0.75rem;
 		font-size: 0.9rem;
@@ -393,7 +395,7 @@
 
 	.field input:focus,
 	.field select:focus {
-		border-color: #2563eb;
+		border-color: var(--color-primary);
 	}
 
 	.hint {

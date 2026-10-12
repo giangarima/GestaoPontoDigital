@@ -259,7 +259,7 @@
 		flex-wrap: wrap;
 		padding: 0.625rem 0.75rem;
 		border-radius: 0.5rem;
-		background: var(--color-surface-alt, rgba(127, 127, 127, 0.06));
+		background: var(--color-surface-muted);
 	}
 
 	.dia__data {
@@ -280,7 +280,7 @@
 		font-size: 0.875rem;
 		padding: 0.125rem 0.5rem;
 		border-radius: 0.375rem;
-		border: 1px solid var(--color-border, rgba(127, 127, 127, 0.25));
+		border: 1px solid var(--color-border);
 	}
 
 	.marca--incluida {
@@ -290,8 +290,8 @@
 
 	.marca--falta {
 		border-style: dashed;
-		border-color: var(--color-warning, #b45309);
-		color: var(--color-warning, #b45309);
+		border-color: var(--color-warning);
+		color: var(--color-warning);
 		font-weight: 700;
 	}
 

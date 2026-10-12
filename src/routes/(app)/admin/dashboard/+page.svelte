@@ -862,7 +862,7 @@
 	.chip--ativo {
 		background: var(--color-text);
 		border-color: var(--color-text);
-		color: #fff;
+		color: var(--color-on-primary);
 	}
 
 	.chip__n {
@@ -1045,7 +1045,7 @@
 	.vazio__btn--primario {
 		background: var(--color-primary);
 		border-color: var(--color-primary);
-		color: #fff;
+		color: var(--color-on-primary);
 	}
 
 	@media (max-width: 1024px) {

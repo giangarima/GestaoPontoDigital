@@ -351,7 +351,7 @@
 		gap: 0.375rem;
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #374151;
+		color: var(--color-text-secondary);
 	}
 
 	.field input,
@@ -365,7 +365,7 @@
 	}
 
 	.hint-success {
-		color: #16a34a;
+		color: var(--color-success);
 		font-weight: 500;
 	}
 
@@ -410,7 +410,7 @@
 
 	.row__motivo {
 		margin: 0;
-		color: #334155;
+		color: var(--color-text-secondary);
 		font-size: 0.9rem;
 		line-height: 1.5;
 		background: var(--color-surface-muted);
@@ -479,8 +479,8 @@
 		border: none;
 		border-radius: 0.5rem;
 		padding: 0.4rem 0.7rem;
-		background: #1d4ed8;
-		color: #fff;
+		background: var(--color-primary-hover);
+		color: var(--color-on-primary);
 		cursor: pointer;
 	}
 </style>

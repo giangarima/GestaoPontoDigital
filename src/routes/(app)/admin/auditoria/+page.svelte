@@ -266,7 +266,7 @@
 
 	.error {
 		background: var(--color-danger-bg);
-		color: #b91c1c;
+		color: var(--color-danger-strong);
 		padding: 0.625rem 0.875rem;
 		border-radius: var(--radius-sm);
 		font-size: 0.875rem;
@@ -278,7 +278,7 @@
 		gap: 1rem;
 		padding: 1rem 1.25rem;
 		border-radius: var(--radius-md);
-		border: 1px solid #bbf7d0;
+		border: 1px solid var(--color-success-border);
 		background: var(--color-success-bg);
 		color: var(--color-success);
 	}

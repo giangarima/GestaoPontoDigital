@@ -112,7 +112,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.5);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -120,7 +120,8 @@
 		padding: 1rem;
 	}
 	.modal {
-		background: #fff;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 0.75rem;
 		width: 100%;
 		max-width: 460px;
@@ -142,7 +143,7 @@
 		background: none;
 		border: none;
 		font-size: 1.125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		padding: 0.25rem;
 	}
@@ -154,9 +155,9 @@
 	}
 	.aviso {
 		font-size: 0.825rem;
-		color: #475569;
-		background: #eff6ff;
-		border-left: 3px solid #3b82f6;
+		color: var(--color-text-muted);
+		background: var(--color-primary-soft);
+		border-left: 3px solid var(--color-primary);
 		padding: 0.625rem 0.75rem;
 		border-radius: 0.375rem;
 		margin: 0;
@@ -166,7 +167,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		background: #f8fafc;
+		background: var(--color-surface-muted);
 		padding: 0.75rem;
 		border-radius: 0.5rem;
 		margin: 0;
@@ -177,18 +178,18 @@
 		gap: 0.5rem;
 	}
 	.info dt {
-		color: #64748b;
+		color: var(--color-text-muted);
 		min-width: 60px;
 		margin: 0;
 	}
 	.info dd {
 		margin: 0;
-		color: #111;
+		color: var(--color-text);
 		font-weight: 500;
 	}
 	.erro {
-		background: #fef2f2;
-		color: #b91c1c;
+		background: var(--color-danger-bg);
+		color: var(--color-danger-strong);
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
 		font-size: 0.825rem;
@@ -199,7 +200,7 @@
 		justify-content: flex-end;
 		gap: 0.75rem;
 		padding: 0.75rem 1.5rem 1.25rem;
-		border-top: 1px solid #e2e8f0;
+		border-top: 1px solid var(--color-border);
 	}
 	.btn {
 		padding: 0.5rem 1.125rem;
@@ -214,11 +215,11 @@
 		cursor: not-allowed;
 	}
 	.btn--primario {
-		background: #3b82f6;
-		color: #fff;
+		background: var(--color-primary);
+		color: var(--color-on-primary);
 	}
 	.btn--secundario {
-		background: #e2e8f0;
-		color: #111;
+		background: var(--color-border);
+		color: var(--color-text);
 	}
 </style>

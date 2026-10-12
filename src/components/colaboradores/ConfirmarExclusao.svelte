@@ -36,7 +36,7 @@
 	.backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.5);
+		background: var(--color-overlay);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -45,7 +45,8 @@
 	}
 
 	.dialog {
-		background: var(--color-surface, #fff);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 0.75rem;
 		padding: 2rem;
 		text-align: center;
@@ -63,11 +64,11 @@
 		font-size: 1.125rem;
 		font-weight: 600;
 		margin: 0 0 0.5rem;
-		color: var(--color-text, #111);
+		color: var(--color-text);
 	}
 
 	p {
-		color: var(--color-text-muted, #555);
+		color: var(--color-text-muted);
 		font-size: 0.9rem;
 		margin: 0 0 1.5rem;
 		line-height: 1.5;
@@ -94,12 +95,12 @@
 	}
 
 	.btn--cancelar {
-		background: var(--color-border, #e2e8f0);
-		color: var(--color-text, #111);
+		background: var(--color-border);
+		color: var(--color-text);
 	}
 
 	.btn--confirmar {
-		background: var(--color-danger, #ef4444);
-		color: #fff;
+		background: var(--color-danger);
+		color: var(--color-on-primary);
 	}
 </style>

@@ -305,7 +305,7 @@
 
 	.tab.is-active {
 		background: var(--color-primary);
-		color: #fff;
+		color: var(--color-on-primary);
 		border-color: var(--color-primary);
 	}
 
@@ -317,6 +317,7 @@
 
 	.day {
 		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-card);
 		overflow: hidden;
