@@ -82,6 +82,19 @@
 		return out;
 	});
 
+	/**
+	 * Dia com tratamento do admin: inclusão (lançamento manual / batida corrigida) ou
+	 * marcação desconsiderada — exatamente onde a visão do colaborador e a com
+	 * ajustes divergem.
+	 */
+	function ajustadoNoDia(summary: EspelhoDia | null): boolean {
+		return !!summary?.registros.some((r) => r.createdBy != null || !!r.anulacao);
+	}
+
+	let soAjustados = $state(false);
+	const diasAjustados = $derived(dias.filter((d) => ajustadoNoDia(d.summary)));
+	const diasVisiveis = $derived(soAjustados ? diasAjustados : dias);
+
 	async function carregar() {
 		if (!colaboradorId || !mes) return;
 		carregando = true;
@@ -101,7 +114,11 @@
 	}
 
 	$effect(() => {
-		if (colaboradorId && mes) carregar();
+		if (colaboradorId && mes) {
+			// Outro colaborador/mês: o filtro de ajustes não vale mais.
+			soAjustados = false;
+			carregar();
+		}
 	});
 
 	/** Estado efetivo (com ajustes do admin): primeira não-anulada do tipo; se todas anuladas, a última anulada. */
@@ -219,6 +236,7 @@
 				<span><strong>{totais.horas}h</strong> trabalhadas</span>
 				<span class="extra"><strong>{totais.extras}h</strong> extras</span>
 				<span class="deficit"><strong>{totais.deficit}h</strong> déficit</span>
+				{#if soAjustados}<span class="totais__escopo">(mês inteiro)</span>{/if}
 			</div>
 
 			<div class="grid-wrap">
@@ -231,9 +249,18 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each dias as dia (dia.date)}
+						{#each diasVisiveis as dia (dia.date)}
+							{@const ajustado = ajustadoNoDia(dia.summary)}
 							<tr class:fim-semana={dia.isFimSemana}>
 								<td class="dia">
+									<!-- Sempre presente para manter as datas alinhadas; só pinta no dia ajustado. -->
+									<span
+										class="dia-ajustado"
+										class:is-ajustado={ajustado}
+										title={ajustado ? 'Dia com ajuste do admin' : undefined}
+										aria-label={ajustado ? 'Dia com ajuste do admin' : undefined}
+										aria-hidden={!ajustado}
+									></span>
 									<span class="dia-num">{formatDataCurta(dia.date)}</span>
 									<span class="dia-sem">{DIA_SEMANA[dia.diaSemana]}</span>
 								</td>
@@ -296,10 +323,46 @@
 		</div>
 	{/snippet}
 
-	<div class="legenda">
-		<span class="leg leg--ok">Marcação do colaborador</span>
-		<span class="leg leg--manual">Lançamento / ajuste do admin</span>
-		<span class="leg leg--anulada">Marcação ajustada (substituída)</span>
+	<div class="barra">
+		<div class="filtro" role="group" aria-label="Dias exibidos">
+			<button
+				type="button"
+				class="chip"
+				class:chip--ativo={!soAjustados}
+				aria-pressed={!soAjustados}
+				onclick={() => (soAjustados = false)}
+			>
+				Todos os dias <span class="chip__n">{dias.length}</span>
+			</button>
+			<button
+				type="button"
+				class="chip"
+				class:chip--ativo={soAjustados}
+				aria-pressed={soAjustados}
+				disabled={diasAjustados.length === 0}
+				onclick={() => (soAjustados = true)}
+			>
+				{#if diasAjustados.length === 0}
+					Nenhum ajuste neste mês
+				{:else}
+					Só dias com ajustes <span class="chip__n">{diasAjustados.length}</span>
+				{/if}
+			</button>
+		</div>
+
+		<div class="como-ler" aria-label="Como ler o espelho">
+			<span class="como-ler__titulo">Como ler</span>
+			<span class="como-ler__item">
+				<span class="batida batida--amostra">08:02</span> Registro do colaborador
+			</span>
+			<span class="como-ler__item">
+				<span class="batida batida--amostra batida--manual">08:00</span> Incluída ou corrigida pelo admin
+			</span>
+			<span class="como-ler__item">
+				<span class="batida batida--amostra batida--anulada">08:15</span> Desconsiderada pelo admin
+			</span>
+			<span class="como-ler__dica">Passe o mouse sobre uma batida para ver o motivo.</span>
+		</div>
 	</div>
 
 	{#if editavel}
@@ -408,14 +471,93 @@
 	.totais .deficit {
 		color: var(--color-danger);
 	}
+	.totais__escopo {
+		color: var(--color-text-subtle);
+	}
 
-	.legenda {
+	.barra {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 1rem;
-		font-size: 0.75rem;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem 1.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.filtro {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		background: var(--color-surface);
 		color: var(--color-text-muted);
-		margin-bottom: 0.75rem;
+		font: inherit;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.chip:disabled {
+		cursor: default;
+		opacity: 0.6;
+	}
+	.chip--ativo {
+		background: var(--color-text);
+		border-color: var(--color-text);
+		color: var(--color-surface);
+	}
+	.chip__n {
+		font-variant-numeric: tabular-nums;
+		opacity: 0.7;
+	}
+
+	.como-ler {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 1rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
+	}
+	.como-ler__titulo {
+		font-weight: 700;
+		color: var(--color-text-secondary);
+	}
+	.como-ler__item {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+	.como-ler__dica {
+		flex-basis: 100%;
+		font-size: 0.75rem;
+		color: var(--color-text-subtle);
+	}
+	/* Amostra da legenda: a mesma célula da tabela, menor e sem interação. */
+	.batida.batida--amostra {
+		width: auto;
+		padding: 0.125rem 0.375rem;
+		font-size: 0.75rem;
+		cursor: default;
+	}
+
+	.dia-ajustado {
+		display: inline-block;
+		width: 7px;
+		height: 7px;
+		margin-right: 0.25rem;
+		border-radius: 50%;
+		vertical-align: middle;
+	}
+	.dia-ajustado.is-ajustado {
+		background: var(--color-warning-dot);
 	}
 
 	.grid-wrap {
@@ -548,27 +690,5 @@
 		color: var(--color-text-secondary);
 		text-align: center;
 		font-variant-numeric: tabular-nums;
-	}
-
-	.leg {
-		padding: 0.125rem 0.5rem;
-		border-radius: 0.25rem;
-		border: 1px solid transparent;
-	}
-	.leg--ok {
-		background: var(--color-success-bg);
-		color: var(--color-success-strong);
-		border-color: var(--color-success-border);
-	}
-	.leg--manual {
-		background: var(--color-warning-soft);
-		color: var(--color-warning-strong);
-		border-color: var(--color-warning-soft-border);
-	}
-	.leg--anulada {
-		background: var(--color-hover);
-		color: var(--color-text-subtle);
-		border-color: var(--color-border);
-		text-decoration: line-through;
 	}
 </style>
