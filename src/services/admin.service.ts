@@ -3,6 +3,7 @@
  * @description Operações exclusivas do administrador (métricas agregadas).
  */
 
+import type { FeriadoDoDia, TipoFeriado } from './feriado.service';
 import { get } from './api';
 
 /**
@@ -15,6 +16,7 @@ export type SituacaoDia =
 	| 'ainda_nao_chegou'
 	| 'falta_provavel'
 	| 'folga'
+	| 'feriado'
 	| 'ferias'
 	| 'ausencia'
 	| 'sem_jornada';
@@ -42,6 +44,7 @@ export interface LinhaPainel {
 	atrasado: boolean;
 	diaEmAberto: boolean;
 	ausencia: { tipo: string; rotulo: string } | null;
+	feriado: FeriadoDoDia | null;
 	situacao: SituacaoDia;
 	divergencia: boolean;
 	ordem: number;
@@ -57,6 +60,7 @@ export interface ResumoPainel {
 	ausentes: number;
 	ferias: number;
 	folgas: number;
+	feriados: number;
 	semJornada: number;
 	diasEmAberto: number;
 	marcacoesDoDia: number;
@@ -78,6 +82,8 @@ export interface PainelDia {
 	resumo: ResumoPainel;
 	atencao: AtencaoPainel;
 	linhas: LinhaPainel[];
+	/** Feriado ou ponto facultativo do dia, com quantos estão escalados. */
+	feriado: { nome: string; tipo: TipoFeriado; abrangencia: string; escalados: number } | null;
 	/** Ninguém tem expediente previsto no dia. */
 	semEscala: boolean;
 	/** Só quando `semEscala`: dias vizinhos com expediente. */

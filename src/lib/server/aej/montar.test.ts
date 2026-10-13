@@ -63,6 +63,7 @@ function entrada(): AejEntrada {
 				desligamento: null,
 				versoes: COMERCIAL,
 				diasAbonados: new Set(['2026-01-07']), // atestado na quarta
+				feriados: new Map(),
 				marcacoes: [
 					// segunda: dia normal
 					original('2026-01-05T08:02'),
@@ -94,6 +95,7 @@ function entrada(): AejEntrada {
 				desligamento: brt('2026-01-06T18:00'), // desligada na terça
 				versoes: MEIO_PERIODO,
 				diasAbonados: new Set(),
+				feriados: new Map(),
 				marcacoes: [original('2026-01-05T08:00')]
 			}
 		]
@@ -168,6 +170,23 @@ describe('montarLinhasAej', () => {
 		e.agora = brt('2026-01-08T09:00'); // quinta ainda em andamento
 		const faltas = montarLinhasAej(e).filter((l) => l.startsWith('07|1|2|'));
 		expect(faltas).toEqual([]);
+	});
+
+	it('feriado fora da escala não vira falta; escalado que não veio, sim', () => {
+		const e = entrada();
+		const feriado = {
+			nome: 'Feriado municipal',
+			tipo: 'feriado' as const,
+			abrangencia: 'municipal' as const
+		};
+		e.vinculos[0].feriados = new Map([['2026-01-08', { ...feriado, escalado: false }]]);
+		expect(montarLinhasAej(e).filter((l) => l.startsWith('07|1|2|'))).toEqual([]);
+
+		// Escalado para trabalhar no feriado e não veio: falta.
+		e.vinculos[0].feriados = new Map([['2026-01-08', { ...feriado, escalado: true }]]);
+		expect(montarLinhasAej(e).filter((l) => l.startsWith('07|1|2|'))).toEqual([
+			'07|1|2|2026-01-08||'
+		]);
 	});
 
 	it('CNO/CAEPF vão no campo certo pelo tamanho', () => {

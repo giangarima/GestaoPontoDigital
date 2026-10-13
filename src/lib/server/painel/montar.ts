@@ -17,6 +17,7 @@
 import { apurarDia } from '@/lib/server/apuracao';
 import { horarioContratualDoDia, marcacoesPrevistas } from '@/lib/server/jornada';
 import type { VersaoVigencia } from '@/lib/server/jornada';
+import type { FeriadoDoDia } from '@/lib/server/feriado/calendario';
 import { diaDe, minutosDoDia, type Dia } from '@/lib/server/periodo';
 
 /**
@@ -50,6 +51,7 @@ export type SituacaoDia =
 	| 'ainda_nao_chegou'
 	| 'falta_provavel'
 	| 'folga'
+	| 'feriado'
 	| 'ferias'
 	| 'ausencia'
 	| 'sem_jornada';
@@ -93,6 +95,8 @@ export interface LinhaPainel {
 	/** Dia encerrado com marcação ímpar — mesmo critério de `pendencias.ts`. */
 	diaEmAberto: boolean;
 	ausencia: AusenciaPainel | null;
+	/** Feriado/ponto facultativo do dia; `escalado` = trabalha nele pela jornada. */
+	feriado: FeriadoDoDia | null;
 	situacao: SituacaoDia;
 	/** Entra no bloco "Precisa de atenção". */
 	divergencia: boolean;
@@ -110,6 +114,8 @@ export interface ColaboradorPainel {
 	marcacoes: Date[];
 	/** Ausência aprovada que cobre o dia, se houver. */
 	ausencia: { tipo: string } | null;
+	/** Feriado ou ponto facultativo do dia, do ponto de vista do colaborador. */
+	feriado: FeriadoDoDia | null;
 }
 
 export interface HorarioEmpresa {
@@ -132,6 +138,7 @@ const ORDEM: Record<SituacaoDia, number> = {
 	ausencia: 6,
 	ferias: 7,
 	folga: 8,
+	feriado: 8,
 	sem_jornada: 9
 };
 
@@ -189,7 +196,10 @@ export function montarLinha(
 	const ehHoje = dia === hoje;
 	const ehFuturo = dia > hoje;
 
-	const horario = horarioContratualDoDia(c.versoes, dia);
+	// Fora da escala do feriado: sem horário contratual, como no espelho — nem
+	// falta, nem atraso. Escalado é acompanhado como num dia comum.
+	const foraDaEscala = c.feriado !== null && !c.feriado.escalado;
+	const horario = foraDaEscala ? null : horarioContratualDoDia(c.versoes, dia);
 	const semJornada = c.versoes.length === 0;
 	const previstas = horario ? marcacoesPrevistas(dia, horario.pares) : null;
 	// 0 = sem expediente (folga/DSR); null = sem jornada cadastrada.
@@ -229,6 +239,8 @@ export function montarLinha(
 		situacao = 'ferias';
 	} else if (ausencia) {
 		situacao = 'ausencia';
+	} else if (foraDaEscala) {
+		situacao = 'feriado';
 	} else if (!horario) {
 		situacao = 'folga';
 	} else if (ehFuturo) {
@@ -275,6 +287,7 @@ export function montarLinha(
 		atrasado,
 		diaEmAberto,
 		ausencia,
+		feriado: c.feriado,
 		situacao,
 		divergencia,
 		ordem
@@ -291,6 +304,7 @@ export interface ResumoPainel {
 	ausentes: number;
 	ferias: number;
 	folgas: number;
+	feriados: number;
 	semJornada: number;
 	diasEmAberto: number;
 	marcacoesDoDia: number;
@@ -308,6 +322,7 @@ export function resumirLinhas(linhas: LinhaPainel[]): ResumoPainel {
 		ausentes: conta((l) => l.situacao === 'ausencia'),
 		ferias: conta((l) => l.situacao === 'ferias'),
 		folgas: conta((l) => l.situacao === 'folga'),
+		feriados: conta((l) => l.situacao === 'feriado'),
 		semJornada: conta((l) => l.situacao === 'sem_jornada'),
 		diasEmAberto: conta((l) => l.diaEmAberto),
 		marcacoesDoDia: linhas.reduce((soma, l) => soma + l.marcacoes, 0)

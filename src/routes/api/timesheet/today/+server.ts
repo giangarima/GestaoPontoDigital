@@ -3,6 +3,8 @@ import { prisma } from '@/lib/server/db';
 import { buildSummary } from '@/lib/server/timesheet';
 import { ausenciaNoPeriodo, diaDe, instantesDoPeriodo } from '@/lib/server/periodo';
 import { contratualPorDia, previstasPorDia } from '@/lib/server/jornada';
+import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
+import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
 import { requireUser, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request }) => {
@@ -20,7 +22,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 	const colaboradorId = user.colaboradorId;
 
-	const [registros, ausencias, colaborador] = await Promise.all([
+	const [registros, ausencias, colaborador, feriados] = await Promise.all([
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(hoje, hoje) },
 			orderBy: { marcadoEm: 'asc' },
@@ -33,13 +35,15 @@ export const GET: RequestHandler = async ({ request }) => {
 		prisma.colaborador.findUnique({
 			where: { id: colaboradorId },
 			select: { jornada: { select: { versoes: true } } }
-		})
+		}),
+		feriadosDoPeriodo(user.empresaId, hoje, hoje)
 	]);
 
 	return jsonOk(
 		buildSummary(hoje, registros, {
 			hoje,
 			datasAbonadas: ausencias.length > 0 ? new Set([hoje]) : new Set(),
+			feriados: feriadosDoColaborador(feriados, colaboradorId),
 			contratualMin: contratualPorDia(colaborador?.jornada?.versoes),
 			previstas: previstasPorDia(colaborador?.jornada?.versoes)
 		})

@@ -88,3 +88,40 @@ export async function incluirPonto(
 		})
 	);
 }
+
+const util = {
+	ativo: true,
+	entrada: '08:00',
+	saida_almoco: '12:00',
+	retorno_almoco: '13:00',
+	saida: '17:00'
+};
+const folga = { ativo: false, entrada: '', saida_almoco: '', retorno_almoco: '', saida: '' };
+
+/** Jornada seg–sex 08:00–17:00 com almoço; sábado e domingo de folga. */
+export async function vincularJornada(empresaId: string, colaboradorId: string) {
+	const jornada = await prisma.jornada.create({
+		data: {
+			empresaId,
+			nome: 'Comercial',
+			versoes: {
+				create: {
+					vigenciaInicio: new Date('2020-01-01T00:00:00Z'),
+					dias: {
+						segunda: util,
+						terca: util,
+						quarta: util,
+						quinta: util,
+						sexta: util,
+						sabado: folga,
+						domingo: folga
+					}
+				}
+			}
+		}
+	});
+	await prisma.colaborador.update({
+		where: { id: colaboradorId },
+		data: { jornadaId: jornada.id }
+	});
+}

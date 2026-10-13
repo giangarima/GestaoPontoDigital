@@ -7,6 +7,8 @@
 import { prisma } from '@/lib/server/db';
 import { padNum, toD } from '@/lib/server/afd/format';
 import { ausenciaDateKeys } from '@/lib/server/timesheet';
+import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
+import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
 import { ausenciaNoPeriodo } from '@/lib/server/periodo';
 import { montarLinhasAej } from './montar';
 
@@ -49,6 +51,8 @@ export async function gerarAej(
 		orderBy: { usuario: { nome: 'asc' } }
 	});
 
+	const feriados = await feriadosDoPeriodo(empresaId, toD(range.inicio), toD(range.fim));
+
 	const linhas = montarLinhasAej({
 		empresa: {
 			cnpj: empresa.cnpj,
@@ -65,6 +69,7 @@ export async function gerarAej(
 			desligamento: c.deletedAt,
 			versoes: c.jornada?.versoes ?? [],
 			diasAbonados: ausenciaDateKeys(c.ausencias),
+			feriados: feriadosDoColaborador(feriados, c.id),
 			marcacoes: c.registros
 		}))
 	});

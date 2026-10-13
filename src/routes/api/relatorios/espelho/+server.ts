@@ -42,6 +42,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	// marcações do REP, fonte "O") — ambos a partir dos mesmos registros.
 	const opcoes = {
 		datasAbonadas: ausenciaDateKeys(entrada.ausencias),
+		feriados: entrada.feriados,
 		contratualMin: contratualPorDia(entrada.versoes),
 		previstas: previstasPorDia(entrada.versoes)
 	};
@@ -70,6 +71,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		inicio,
 		fim,
 		dias,
+		feriados: [...entrada.feriados].map(([data, f]) => ({ data, ...f })),
 		totais: {
 			...totaisDTO(montarEspelho(entrada).totais),
 			original: totaisDTO(montarEspelho(entrada, { visao: 'original' }).totais)

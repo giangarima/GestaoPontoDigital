@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { FeriadoDoDia } from '@/lib/server/feriado/calendario';
 import { montarEspelho, type EspelhoEntrada, type MarcacaoEspelho } from './montar';
 
 const brt = (s: string) => new Date(`${s}:00-03:00`);
@@ -55,6 +56,7 @@ function entrada(extra: Partial<EspelhoEntrada> = {}): EspelhoEntrada {
 			}
 		],
 		ausencias: [],
+		feriados: new Map(),
 		marcacoes: [],
 		...extra
 	};
@@ -321,5 +323,106 @@ describe('previsto do período (base do consolidado)', () => {
 	it('sem jornada: nada previsto', () => {
 		const esp = montarEspelho(entrada({ versoes: [] }));
 		expect(esp.totais).toMatchObject({ diasPrevistos: 0, previstoMin: 0 });
+	});
+});
+
+const feriado = (nome: string, extra: Partial<FeriadoDoDia> = {}): FeriadoDoDia => ({
+	nome,
+	tipo: 'feriado',
+	abrangencia: 'municipal',
+	escalado: false,
+	...extra
+});
+
+describe('feriados', () => {
+	const feriados = new Map([['2026-01-06', feriado('Dia de Reis')]]);
+
+	it('feriado sem marcação: nem falta, nem déficit, fora do previsto', () => {
+		const esp = montarEspelho(entrada({ feriados }));
+		expect(diaDe(esp, '2026-01-06')).toMatchObject({
+			ocorrencia: 'Feriado (Dia de Reis)',
+			feriado: { nome: 'Dia de Reis', escalado: false },
+			falta: false,
+			deficitMin: 0,
+			horario: null
+		});
+		expect(esp.totais).toMatchObject({ faltas: 4, diasPrevistos: 4, previstoMin: 3 * 480 + 240 });
+	});
+
+	it('trabalho no feriado fora da escala é todo extra, sem tolerância', () => {
+		const esp = montarEspelho(
+			entrada({
+				feriados,
+				marcacoes: [original('2026-01-06T08:02', 1), original('2026-01-06T12:00', 2)]
+			})
+		);
+		expect(diaDe(esp, '2026-01-06')).toMatchObject({
+			realizadoMin: 238,
+			extraMin: 238,
+			deficitMin: 0,
+			toleranciaMin: 0,
+			ocorrencia: 'Feriado (Dia de Reis)'
+		});
+	});
+
+	it('escalado no feriado: segue a jornada e leva falta se não vier', () => {
+		const esp = montarEspelho(
+			entrada({ feriados: new Map([['2026-01-06', feriado('Dia de Reis', { escalado: true })]]) })
+		);
+		expect(diaDe(esp, '2026-01-06')).toMatchObject({ falta: true, deficitMin: 480, horario: 'H1' });
+		expect(esp.totais.diasPrevistos).toBe(5);
+	});
+
+	it('escalado que trabalhou: feriado trabalhado, apurado contra a jornada', () => {
+		const esp = montarEspelho(
+			entrada({
+				feriados: new Map([['2026-01-06', feriado('Dia de Reis', { escalado: true })]]),
+				marcacoes: [
+					original('2026-01-06T08:00', 1),
+					original('2026-01-06T12:00', 2),
+					original('2026-01-06T13:00', 3),
+					original('2026-01-06T18:00', 4)
+				]
+			})
+		);
+		expect(diaDe(esp, '2026-01-06')).toMatchObject({
+			ocorrencia: 'Feriado trabalhado (Dia de Reis)',
+			realizadoMin: 540,
+			extraMin: 60,
+			falta: false
+		});
+	});
+
+	it('ponto facultativo dispensado: sem expediente, com rótulo próprio', () => {
+		const esp = montarEspelho(
+			entrada({
+				feriados: new Map([['2026-01-06', feriado('Carnaval', { tipo: 'ponto_facultativo' })]])
+			})
+		);
+		expect(diaDe(esp, '2026-01-06')).toMatchObject({
+			ocorrencia: 'Ponto facultativo (Carnaval)',
+			falta: false
+		});
+	});
+
+	it('ausência aprovada no feriado mantém o rótulo da ausência', () => {
+		const esp = montarEspelho(
+			entrada({
+				feriados,
+				ausencias: [
+					{
+						tipo: 'ferias',
+						dataInicio: new Date('2026-01-05T00:00:00Z'),
+						dataFim: new Date('2026-01-09T00:00:00Z')
+					}
+				]
+			})
+		);
+		expect(diaDe(esp, '2026-01-06')).toMatchObject({ ocorrencia: 'Férias' });
+	});
+
+	it('feriado em dia de folga continua feriado no rótulo', () => {
+		const esp = montarEspelho(entrada({ feriados: new Map([['2026-01-04', feriado('X')]]) }));
+		expect(diaDe(esp, '2026-01-04').ocorrencia).toBe('Feriado (X)');
 	});
 });

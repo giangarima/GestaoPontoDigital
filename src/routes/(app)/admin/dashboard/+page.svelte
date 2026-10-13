@@ -10,6 +10,7 @@
   chip correspondente e corta a lista.
 -->
 <script lang="ts">
+	import { ROTULO_TIPO } from '@/services/feriado.service';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import {
@@ -146,6 +147,7 @@
 		ainda_nao_chegou: 'Ainda não chegou',
 		falta_provavel: 'Falta provável',
 		folga: 'Folga',
+		feriado: 'Feriado',
 		ferias: 'Férias',
 		ausencia: 'Ausência',
 		sem_jornada: 'Sem jornada'
@@ -166,6 +168,7 @@
 	function rotuloDe(l: LinhaPainel): string {
 		if (l.diaEmAberto) return 'Dia em aberto';
 		if (l.atrasado && l.situacao !== 'falta_provavel') return 'Atrasado';
+		if (l.situacao === 'feriado' && l.feriado) return ROTULO_TIPO[l.feriado.tipo];
 		return ROTULO_SITUACAO[l.situacao];
 	}
 
@@ -220,7 +223,11 @@
 		faltas: (l) => l.situacao === 'falta_provavel',
 		nao_chegaram: (l) => l.situacao === 'ainda_nao_chegou',
 		trabalhando: (l) => l.situacao === 'trabalhando',
-		afastados: (l) => l.situacao === 'folga' || l.situacao === 'ferias' || l.situacao === 'ausencia'
+		afastados: (l) =>
+			l.situacao === 'folga' ||
+			l.situacao === 'feriado' ||
+			l.situacao === 'ferias' ||
+			l.situacao === 'ausencia'
 	};
 
 	const linhas = $derived(painel?.linhas ?? []);
@@ -250,7 +257,10 @@
 			id: 'afastados' as Filtro,
 			rotulo: 'Folga e férias',
 			n:
-				(painel?.resumo.folgas ?? 0) + (painel?.resumo.ferias ?? 0) + (painel?.resumo.ausentes ?? 0)
+				(painel?.resumo.folgas ?? 0) +
+				(painel?.resumo.feriados ?? 0) +
+				(painel?.resumo.ferias ?? 0) +
+				(painel?.resumo.ausentes ?? 0)
 		}
 	]);
 
@@ -417,7 +427,11 @@
 					<span class="vazio__icone" aria-hidden="true"><Icon name="vacations" size={30} /></span>
 					<div class="vazio__texto">
 						<h2>
-							{ehHoje ? 'Hoje ninguém tem jornada prevista' : 'Ninguém tem jornada neste dia'}
+							{#if painel.feriado}
+								{ROTULO_TIPO[painel.feriado.tipo]}: {painel.feriado.nome}
+							{:else}
+								{ehHoje ? 'Hoje ninguém tem jornada prevista' : 'Ninguém tem jornada neste dia'}
+							{/if}
 						</h2>
 						<p class="muted">
 							{painel.resumo.colaboradoresAtivos} colaborador{painel.resumo.colaboradoresAtivos ===
@@ -449,6 +463,13 @@
 				</div>
 			</Card>
 		{:else}
+			{#if painel.feriado}
+				<!-- Feriado com a empresa aberta: só os escalados estão sendo acompanhados. -->
+				<div class="aviso-feriado" role="status">
+					<strong>{ROTULO_TIPO[painel.feriado.tipo]}: {painel.feriado.nome}</strong>
+					— {painel.feriado.escalados} na escala; os demais estão de folga.
+				</div>
+			{/if}
 			<div class="cards">
 				<CardResumo
 					rotulo="Faltas prováveis"
@@ -473,9 +494,12 @@
 				/>
 				<CardResumo
 					rotulo="Folga e férias"
-					valor={painel.resumo.folgas + painel.resumo.ferias + painel.resumo.ausentes}
+					valor={painel.resumo.folgas +
+						painel.resumo.feriados +
+						painel.resumo.ferias +
+						painel.resumo.ausentes}
 					tone="neutral"
-					descricao={`${painel.resumo.ferias} em férias · ${painel.resumo.folgas} de folga`}
+					descricao={`${painel.resumo.ferias} em férias · ${painel.resumo.folgas + painel.resumo.feriados} de folga`}
 					ativo={filtro === 'afastados'}
 					onclick={() => alternarFiltro('afastados')}
 				/>
@@ -684,6 +708,15 @@
 	.muted {
 		color: var(--color-text-muted);
 		margin: 0;
+	}
+
+	.aviso-feriado {
+		background: var(--color-surface-muted);
+		border: 1px solid var(--color-border);
+		color: var(--color-text);
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.875rem;
 	}
 
 	.error {

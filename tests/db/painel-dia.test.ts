@@ -7,46 +7,15 @@
 import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/server/db';
 import { carregarPainelDia, carregarResumoAdmin } from '@/lib/server/painel/carregar';
-import { baterPonto, criarColaborador, criarEmpresa, incluirPonto } from './fixtures';
+import {
+	baterPonto,
+	criarColaborador,
+	criarEmpresa,
+	incluirPonto,
+	vincularJornada
+} from './fixtures';
 
 const brt = (s: string) => new Date(`${s}:00-03:00`);
-
-const util = {
-	ativo: true,
-	entrada: '08:00',
-	saida_almoco: '12:00',
-	retorno_almoco: '13:00',
-	saida: '17:00'
-};
-const folga = { ativo: false, entrada: '', saida_almoco: '', retorno_almoco: '', saida: '' };
-
-/** Jornada seg–sex 08:00–17:00 com almoço; sábado e domingo de folga. */
-async function vincularJornada(empresaId: string, colaboradorId: string) {
-	const jornada = await prisma.jornada.create({
-		data: {
-			empresaId,
-			nome: 'Comercial',
-			versoes: {
-				create: {
-					vigenciaInicio: new Date('2020-01-01T00:00:00Z'),
-					dias: {
-						segunda: util,
-						terca: util,
-						quarta: util,
-						quinta: util,
-						sexta: util,
-						sabado: folga,
-						domingo: folga
-					}
-				}
-			}
-		}
-	});
-	await prisma.colaborador.update({
-		where: { id: colaboradorId },
-		data: { jornadaId: jornada.id }
-	});
-}
 
 // 2026-03-03 terça, 2026-03-07 sábado, 2026-03-08 domingo.
 const TERCA = '2026-03-03';

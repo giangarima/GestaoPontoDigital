@@ -38,6 +38,7 @@ model Empresa {
   eventosSensiveis  EventoSensivel[]
   nsrSequencia      EmpresaNsrSequencia?
   comprovantes      Comprovante[]
+  feriados          Feriado[]
 
   @@map("empresas")
 }
@@ -76,27 +77,28 @@ model Usuario {
 // NÃO guarda credencial: login mora só em `usuarios`. `usuarioId` amarra a
 // identidade autenticável correspondente.
 model Colaborador {
-  id             String        @id @default(cuid())
-  usuarioId      String        @unique @map("usuario_id")
-  usuario        Usuario       @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  empresaId      String        @map("empresa_id")
-  empresa        Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  id             String          @id @default(cuid())
+  usuarioId      String          @unique @map("usuario_id")
+  usuario        Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresaId      String          @map("empresa_id")
+  empresa        Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cargo          String?
-  departamentoId String?       @map("departamento_id")
-  departamento   Departamento? @relation(fields: [departamentoId], references: [id], onDelete: SetNull)
+  departamentoId String?         @map("departamento_id")
+  departamento   Departamento?   @relation(fields: [departamentoId], references: [id], onDelete: SetNull)
   telefone       String?
-  dataAdmissao   DateTime?     @map("data_admissao") @db.Timestamptz(6)
+  dataAdmissao   DateTime?       @map("data_admissao") @db.Timestamptz(6)
   status         String? // "ativo" | "inativo" | "ferias" | "afastado"
-  jornadaId      String?       @map("jornada_id")
-  jornada        Jornada?      @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
+  jornadaId      String?         @map("jornada_id")
+  jornada        Jornada?        @relation(fields: [jornadaId], references: [id], onDelete: SetNull)
   registros      Registro[]
   ausencias      Ausencia[]
+  escalasFeriado FeriadoEscala[]
   // Soft delete — Portaria 671/2021: demitir um colaborador não pode apagar o
   // histórico de ponto. Registros das leituras "ativas" filtram `deletedAt: null`;
   // relatórios legais (espelho) ainda alcançam demitidos.
-  deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz(6)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([empresaId])
   @@index([empresaId, deletedAt])
@@ -319,4 +321,37 @@ model Ausencia {
   @@index([colaboradorId])
   @@index([status])
   @@map("ausencias")
+}
+
+// Feriado ou ponto facultativo da empresa. Os feriados nacionais são fixos em lei
+// e calculados em `src/lib/server/feriado/calendario.ts`: só ganham linha aqui
+// (abrangencia "nacional") quando a empresa abre no dia e precisa guardar a escala.
+//
+// Na apuração o dia é sem expediente — sem falta nem déficit — para quem não está
+// na escala; quem está escalado segue a própria jornada.
+model Feriado {
+  id          String          @id @default(cuid())
+  empresaId   String          @map("empresa_id")
+  empresa     Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  data        DateTime        @db.Timestamptz(6) // data pura (meia-noite UTC), como Ausencia
+  nome        String
+  tipo        String          @default("feriado") // "feriado" | "ponto_facultativo"
+  abrangencia String          @default("municipal") // "nacional" | "estadual" | "municipal"
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  escala      FeriadoEscala[]
+
+  @@unique([empresaId, data])
+  @@map("feriados")
+}
+
+// Quem trabalha no feriado/ponto facultativo (a empresa pode abrir com equipe reduzida).
+model FeriadoEscala {
+  feriadoId     String      @map("feriado_id")
+  feriado       Feriado     @relation(fields: [feriadoId], references: [id], onDelete: Cascade)
+  colaboradorId String      @map("colaborador_id")
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@id([feriadoId, colaboradorId])
+  @@index([colaboradorId])
+  @@map("feriado_escalas")
 }

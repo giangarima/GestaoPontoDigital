@@ -11,6 +11,8 @@
 import { prisma } from '@/lib/server/db';
 import { STATUS_APROVADA } from '@/lib/server/ausencia';
 import { horarioContratualDoDia } from '@/lib/server/jornada';
+import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
+import type { Feriados, TipoFeriado } from '@/lib/server/feriado/calendario';
 import { contarDiasEmAberto } from '@/lib/server/pendencias';
 import { ausenciaDateKeys } from '@/lib/server/timesheet';
 import {
@@ -57,7 +59,9 @@ export interface PainelDia {
 	resumo: ResumoPainel & { colaboradoresAtivos: number };
 	atencao: AtencaoPainel;
 	linhas: LinhaPainel[];
-	/** Ninguém tem expediente previsto no dia (domingo, escala vazia). */
+	/** Feriado ou ponto facultativo do dia, com quantos estão escalados. */
+	feriado: { nome: string; tipo: TipoFeriado; abrangencia: string; escalados: number } | null;
+	/** Ninguém tem expediente previsto no dia (domingo, feriado, escala vazia). */
 	semEscala: boolean;
 	/** Só quando `semEscala`: dias vizinhos com expediente. `null` fora disso. */
 	navegacao: { anterior: Dia | null; proximo: Dia | null } | null;
@@ -95,14 +99,17 @@ function noVinculo(c: ColaboradorCarregado, dia: Dia): boolean {
  */
 function vizinhoComEscala(
 	colaboradores: ColaboradorCarregado[],
+	feriados: Feriados,
 	dia: Dia,
 	passo: 1 | -1
 ): Dia | null {
 	for (let k = 1; k <= ALCANCE_NAVEGACAO_DIAS; k++) {
 		const candidato = deslocar(dia, k * passo);
+		const feriado = feriados.get(candidato);
 		const temEscala = colaboradores.some(
 			(c) =>
 				noVinculo(c, candidato) &&
+				(!feriado || feriado.escalados.has(c.id)) &&
 				horarioContratualDoDia(c.jornada?.versoes ?? [], candidato) !== null
 		);
 		if (temEscala) return candidato;
@@ -121,48 +128,62 @@ export async function carregarPainelDia(
 ): Promise<PainelDia> {
 	const mes = diasDoMes(dia.slice(0, 7));
 
-	const [colaboradores, registros, ausencias, empresa, diasEmAberto, justificativasPendentes] =
-		await Promise.all([
-			// Inclui quem foi desligado DEPOIS do dia consultado: no histórico a
-			// pessoa ainda trabalhava ali.
-			prisma.colaborador.findMany({
-				where: {
-					empresaId,
-					AND: [
-						// `status != 'inativo'` não casa com NULL em SQL (lógica de três
-						// valores), e status nulo significa ativo — ver `colaborador.ts`.
-						{ OR: [{ status: null }, { status: { not: 'inativo' } }] },
-						{ OR: [{ deletedAt: null }, { deletedAt: { gte: inicioDoDia(dia) } }] }
-					]
-				},
-				select: {
-					id: true,
-					dataAdmissao: true,
-					deletedAt: true,
-					usuario: { select: { nome: true } },
-					departamento: { select: { nome: true } },
-					jornada: { select: { versoes: { select: { vigenciaInicio: true, dias: true } } } }
-				}
-			}),
-			// Anuladas ficam de fora já no SQL — não entram na apuração.
-			prisma.registro.findMany({
-				where: { empresaId, marcadoEm: instantesDoPeriodo(dia, dia), anulacao: { is: null } },
-				orderBy: { marcadoEm: 'asc' },
-				select: { colaboradorId: true, marcadoEm: true }
-			}),
-			prisma.ausencia.findMany({
-				where: { empresaId, status: STATUS_APROVADA, ...ausenciaNoPeriodo(dia, dia) },
-				select: { colaboradorId: true, tipo: true, dataInicio: true, dataFim: true }
-			}),
-			prisma.empresa.findUnique({
-				where: { id: empresaId },
-				select: { horaAbertura: true, horaFechamento: true }
-			}),
-			contarDiasEmAberto(empresaId, mes.inicio, mes.fim, agora),
-			prisma.ausencia.count({
-				where: { empresaId, status: STATUS_PENDENTE, tipo: { not: 'ferias' } }
-			})
-		]);
+	const [
+		colaboradores,
+		registros,
+		ausencias,
+		empresa,
+		diasEmAberto,
+		justificativasPendentes,
+		feriados
+	] = await Promise.all([
+		// Inclui quem foi desligado DEPOIS do dia consultado: no histórico a
+		// pessoa ainda trabalhava ali.
+		prisma.colaborador.findMany({
+			where: {
+				empresaId,
+				AND: [
+					// `status != 'inativo'` não casa com NULL em SQL (lógica de três
+					// valores), e status nulo significa ativo — ver `colaborador.ts`.
+					{ OR: [{ status: null }, { status: { not: 'inativo' } }] },
+					{ OR: [{ deletedAt: null }, { deletedAt: { gte: inicioDoDia(dia) } }] }
+				]
+			},
+			select: {
+				id: true,
+				dataAdmissao: true,
+				deletedAt: true,
+				usuario: { select: { nome: true } },
+				departamento: { select: { nome: true } },
+				jornada: { select: { versoes: { select: { vigenciaInicio: true, dias: true } } } }
+			}
+		}),
+		// Anuladas ficam de fora já no SQL — não entram na apuração.
+		prisma.registro.findMany({
+			where: { empresaId, marcadoEm: instantesDoPeriodo(dia, dia), anulacao: { is: null } },
+			orderBy: { marcadoEm: 'asc' },
+			select: { colaboradorId: true, marcadoEm: true }
+		}),
+		prisma.ausencia.findMany({
+			where: { empresaId, status: STATUS_APROVADA, ...ausenciaNoPeriodo(dia, dia) },
+			select: { colaboradorId: true, tipo: true, dataInicio: true, dataFim: true }
+		}),
+		prisma.empresa.findUnique({
+			where: { id: empresaId },
+			select: { horaAbertura: true, horaFechamento: true }
+		}),
+		contarDiasEmAberto(empresaId, mes.inicio, mes.fim, agora),
+		prisma.ausencia.count({
+			where: { empresaId, status: STATUS_PENDENTE, tipo: { not: 'ferias' } }
+		}),
+		// Também cobre o alcance da navegação: no feriado vizinho só há escala de quem foi escalado.
+		feriadosDoPeriodo(
+			empresaId,
+			deslocar(dia, -ALCANCE_NAVEGACAO_DIAS),
+			deslocar(dia, ALCANCE_NAVEGACAO_DIAS)
+		)
+	]);
+	const feriadoDoDia = feriados.get(dia) ?? null;
 
 	const marcacoesPorColaborador = new Map<string, Date[]>();
 	for (const r of registros) {
@@ -193,7 +214,15 @@ export async function carregarPainelDia(
 				departamento: c.departamento?.nome ?? null,
 				versoes: c.jornada?.versoes ?? [],
 				marcacoes: marcacoesPorColaborador.get(c.id) ?? [],
-				ausencia: ausenciaPorColaborador.get(c.id) ?? null
+				ausencia: ausenciaPorColaborador.get(c.id) ?? null,
+				feriado: feriadoDoDia
+					? {
+							nome: feriadoDoDia.nome,
+							tipo: feriadoDoDia.tipo,
+							abrangencia: feriadoDoDia.abrangencia,
+							escalado: feriadoDoDia.escalados.has(c.id)
+						}
+					: null
 			};
 			return montarLinha(entrada, dia, agora, horarioEmpresa);
 		})
@@ -216,11 +245,19 @@ export async function carregarPainelDia(
 			justificativasPendentes
 		},
 		linhas,
+		feriado: feriadoDoDia
+			? {
+					nome: feriadoDoDia.nome,
+					tipo: feriadoDoDia.tipo,
+					abrangencia: feriadoDoDia.abrangencia,
+					escalados: feriadoDoDia.escalados.size
+				}
+			: null,
 		semEscala,
 		navegacao: semEscala
 			? {
-					anterior: vizinhoComEscala(colaboradores, dia, -1),
-					proximo: vizinhoComEscala(colaboradores, dia, 1)
+					anterior: vizinhoComEscala(colaboradores, feriados, dia, -1),
+					proximo: vizinhoComEscala(colaboradores, feriados, dia, 1)
 				}
 			: null
 	};

@@ -16,6 +16,10 @@
  *  - Falta = dia com expediente, dentro do vínculo, sem marcação válida e sem
  *    ausência aprovada, anterior à emissão. Conta o dia contratual inteiro de déficit.
  *  - DSR = domingo sem expediente; demais dias sem expediente = folga.
+ *  - Feriado/ponto facultativo = dia sem expediente (nem falta, nem déficit,
+ *    fora do previsto) para quem não está na escala do dia; o trabalhado nele é
+ *    todo extra. Quem está escalado segue a jornada, com falta se não vier.
+ *    Ausência aprovada prevalece no rótulo.
  *  - Hoje e dias futuros estão em andamento: sem falta nem déficit.
  *  - Previsto = dias com expediente até hoje (inclusive), no vínculo e sem
  *    ausência aprovada — a base de comparação do consolidado.
@@ -28,6 +32,11 @@ import {
 	marcacoesPrevistas,
 	type VersaoVigencia
 } from '@/lib/server/jornada';
+import {
+	rotuloFeriado,
+	type FeriadoDoDia,
+	type FeriadosColaborador
+} from '@/lib/server/feriado/calendario';
 import { dataPura, diaDaDataPura, diaDe, type Dia } from '@/lib/server/periodo';
 import { ausenciaDateKeys } from '@/lib/server/timesheet';
 
@@ -67,6 +76,11 @@ export interface ApuracaoEntrada {
 	versoes: VersaoVigencia[];
 	/** Só as aprovadas. */
 	ausencias: AusenciaEspelho[];
+	/**
+	 * Feriados e pontos facultativos do período, já do ponto de vista deste
+	 * colaborador (escalado ou não) — ver `feriadosDoColaborador`.
+	 */
+	feriados: FeriadosColaborador;
 	marcacoes: MarcacaoEspelho[];
 	/** Data pura (meia-noite UTC). */
 	admissao: Date | null;
@@ -106,8 +120,10 @@ export interface DiaEspelho {
 	noturnoMin: number;
 	extraMin: number;
 	deficitMin: number;
-	/** Falta, Férias, Atestado, DSR, Folga, Incompleto, Tolerância… ('' = dia normal). */
+	/** Falta, Férias, Atestado, DSR, Folga, Feriado, Incompleto, Tolerância… ('' = dia normal). */
 	ocorrencia: string;
+	/** Feriado ou ponto facultativo do dia, se houver. */
+	feriado: FeriadoDoDia | null;
 	falta: boolean;
 	/** Minutos de variação absorvidos pela tolerância do art. 58, §1º da CLT. */
 	toleranciaMin: number;
@@ -255,8 +271,10 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		const validas = linhas.filter((l) => !l.desconsiderada).map((l) => l.marcadoEm);
 
 		const vinculado = noVinculo(dia);
-		const horario = vinculado ? horarioDo(dia) : null;
-		// 0 = sem expediente (folga/DSR); null = sem jornada ou fora do vínculo.
+		const feriado = e.feriados.get(dia) ?? null;
+		// Fora da escala do feriado não há horário contratual: o dia vira sem expediente.
+		const horario = vinculado && !(feriado && !feriado.escalado) ? horarioDo(dia) : null;
+		// 0 = sem expediente (folga/DSR/feriado); null = sem jornada ou fora do vínculo.
 		const contratual = semJornada || !vinculado ? null : (horario?.minutos ?? 0);
 		const ausencia = ausenciaDoDia.get(dia);
 		const previstas = horario ? marcacoesPrevistas(dia, horario.pares) : undefined;
@@ -275,6 +293,7 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		else if (ausencia) ocorrencia = ausencia;
 		else if (falta) ocorrencia = 'Falta';
 		else if (apuracao.incompleto && !emAndamento) ocorrencia = 'Incompleto';
+		else if (feriado) ocorrencia = rotuloFeriado(feriado);
 		else if (contratual === 0 && validas.length === 0)
 			ocorrencia = semana === 'Dom' ? 'DSR' : 'Folga';
 		else if (apuracao.toleranciaMin > 0) ocorrencia = `Tolerância (${apuracao.toleranciaMin} min)`;
@@ -289,6 +308,7 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 			extraMin: apuracao.extraMin,
 			deficitMin: falta ? contratual : emAndamento ? 0 : apuracao.deficitMin,
 			ocorrencia,
+			feriado,
 			falta,
 			toleranciaMin: apuracao.toleranciaMin
 		};

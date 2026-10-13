@@ -185,6 +185,20 @@ export async function seedEmpresaImportada(
 		}
 	});
 
+	// Feriado municipal: ninguém bateu ponto na Sexta-feira Santa nos arquivos de
+	// origem. Os nacionais do período (21/04, 01/05, 07/09) não precisam de linha —
+	// são calculados. Corpus Christi (04/06) fica de fora: houve expediente reduzido,
+	// e os dados não dizem se foi dia comum ou feriado com escala.
+	await prisma.feriado.create({
+		data: {
+			empresaId: empresa.id,
+			data: dataPura('2026-04-03'),
+			nome: 'Sexta-feira Santa',
+			tipo: 'feriado',
+			abrangencia: 'municipal'
+		}
+	});
+
 	const admin = await prisma.usuario.create({
 		data: {
 			empresaId: empresa.id,

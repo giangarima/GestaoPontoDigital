@@ -50,6 +50,7 @@ function colaborador(extra: Partial<ColaboradorPainel> = {}): ColaboradorPainel 
 		versoes: VERSOES,
 		marcacoes: [],
 		ausencia: null,
+		feriado: null,
 		...extra
 	};
 }
@@ -57,6 +58,41 @@ function colaborador(extra: Partial<ColaboradorPainel> = {}): ColaboradorPainel 
 function linha(extra: Partial<ColaboradorPainel>, dia: string, agora: string): LinhaPainel {
 	return montarLinha(colaborador(extra), dia, brt(agora), EMPRESA);
 }
+
+describe('montarLinha — feriado', () => {
+	const feriado = (escalado: boolean) => ({
+		nome: 'Aniversário da cidade',
+		tipo: 'feriado' as const,
+		abrangencia: 'municipal' as const,
+		escalado
+	});
+
+	it('fora da escala, sem marcação: situação feriado, sem falta nem atraso', () => {
+		const l = linha({ feriado: feriado(false) }, TERCA, '2026-03-03T11:00');
+		expect(l).toMatchObject({
+			situacao: 'feriado',
+			contratualMin: 0,
+			atrasado: false,
+			divergencia: false,
+			previstaEntrada: null,
+			feriado: { escalado: false }
+		});
+	});
+
+	it('fora da escala e trabalhou: cumpriu, mas é divergência (sem previsão)', () => {
+		const l = linha(
+			{ feriado: feriado(false), marcacoes: [brt(`${TERCA}T09:00`), brt(`${TERCA}T13:00`)] },
+			TERCA,
+			'2026-03-04T09:00'
+		);
+		expect(l).toMatchObject({ situacao: 'cumpriu', divergencia: true, atrasado: false });
+	});
+
+	it('escalado e não veio: falta provável, como num dia comum', () => {
+		const l = linha({ feriado: feriado(true) }, TERCA, '2026-03-04T09:00');
+		expect(l).toMatchObject({ situacao: 'falta_provavel', previstaEntrada: '08:00' });
+	});
+});
 
 describe('montarLinha — dia encerrado', () => {
 	it('quatro marcações no horário: cumpriu, sem divergência', () => {

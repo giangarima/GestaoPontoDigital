@@ -3,6 +3,7 @@
   @description Histórico de registros de ponto do colaborador.
 -->
 <script lang="ts">
+	import { ROTULO_TIPO } from '@/services/feriado.service';
 	import { onMount } from 'svelte';
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { DailySummary, RegistroType } from '@/services/timesheet.service';
@@ -172,6 +173,11 @@
 							<div class="day__sub">{day.registros.length} registros</div>
 						</div>
 						<div class="day__right">
+							{#if day.feriado}
+								<span class="badge badge--neutral" title={day.feriado.nome}
+									>{ROTULO_TIPO[day.feriado.tipo]}{day.feriado.escalado ? ' trabalhado' : ''}</span
+								>
+							{/if}
 							{#if day.overtime > 0}
 								<span class="badge badge--success">+{formatHoursMinutes(day.overtime * 60)}</span>
 							{/if}
@@ -374,6 +380,11 @@
 	.badge--danger {
 		background: var(--color-danger-bg);
 		color: var(--color-danger);
+	}
+
+	.badge--neutral {
+		background: var(--color-surface-muted);
+		color: var(--color-text-muted);
 	}
 
 	.day__hours {

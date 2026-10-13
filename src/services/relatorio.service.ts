@@ -5,6 +5,7 @@
 
 import { get } from './api';
 import type { DailySummary } from './timesheet.service';
+import type { FeriadoDoDia } from './feriado.service';
 
 /** Totais de horas de uma jornada (efetiva ou original). */
 export interface EspelhoTotais {
@@ -23,6 +24,8 @@ export interface EspelhoRelatorio {
 	inicio: string;
 	fim: string;
 	dias: EspelhoDia[];
+	/** Feriados e pontos facultativos do período, inclusive os dias sem marcação. */
+	feriados: (FeriadoDoDia & { data: string })[];
 	totais: EspelhoTotais & { original: EspelhoTotais };
 }
 

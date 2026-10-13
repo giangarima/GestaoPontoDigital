@@ -42,7 +42,7 @@
 	];
 
 	/**
-	 * O menu do admin tem onze itens; sem agrupamento vira uma lista plana em que
+	 * O menu do admin tem doze itens; sem agrupamento vira uma lista plana em que
 	 * o que se usa todo dia some no meio do cadastro. A separação é por frequência
 	 * de uso, não por entidade.
 	 */
@@ -73,7 +73,8 @@
 				{ href: resolve('/admin/colaboradores', {}), label: 'Colaboradores', icon: 'users' },
 				{ href: resolve('/admin/departamentos', {}), label: 'Departamentos', icon: 'handshake' },
 				{ href: resolve('/admin/jornadas', {}), label: 'Jornadas', icon: 'clock' },
-				{ href: resolve('/admin/ferias', {}), label: 'Férias', icon: 'vacations' }
+				{ href: resolve('/admin/ferias', {}), label: 'Férias', icon: 'vacations' },
+				{ href: resolve('/admin/feriados', {}), label: 'Feriados', icon: 'calendar' }
 			]
 		},
 		{

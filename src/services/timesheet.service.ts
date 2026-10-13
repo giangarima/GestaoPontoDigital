@@ -3,6 +3,7 @@
  * @description Operações de registro e consulta de ponto.
  */
 
+import type { FeriadoDoDia } from './feriado.service';
 import { post, get, baixar } from './api';
 import { desvioDoServidor } from '@/utils/relogio';
 
@@ -35,6 +36,8 @@ export interface DailySummary {
 	deficit: number;
 	/** Dia dentro da tolerância da CLT (art. 58, §1º): sem extras nem déficit. */
 	tolerancia?: boolean;
+	/** Feriado ou ponto facultativo do dia (`escalado` = o dia segue a jornada). */
+	feriado?: FeriadoDoDia | null;
 }
 
 /** Comprovante de uma marcação original das últimas 48h (Portaria 671/2021, art. 80). */

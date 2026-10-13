@@ -1,6 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { apurarPeriodo } from '@/lib/server/espelho/montar';
+import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
+import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
 import { ausenciaNoPeriodo, diasDoMes, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
@@ -44,6 +46,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		}
 	});
 
+	const feriados = await feriadosDoPeriodo(admin.empresaId, periodo.inicio, periodo.fim);
+
 	const byUser = new Map<string, typeof registros>();
 	for (const p of registros) {
 		const list = byUser.get(p.colaboradorId) ?? [];
@@ -63,6 +67,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			emitidoEm: agora,
 			versoes: c.jornada?.versoes ?? [],
 			ausencias: ausenciasColab.filter((a) => a.status === 'aprovada'),
+			feriados: feriadosDoColaborador(feriados, c.id),
 			marcacoes: byUser.get(c.id) ?? [],
 			admissao: c.dataAdmissao,
 			desligamento: c.deletedAt

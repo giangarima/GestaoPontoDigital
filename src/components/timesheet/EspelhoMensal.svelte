@@ -19,6 +19,7 @@
 	import RegistroAjusteModal from './RegistroAjusteModal.svelte';
 	import ReverterAnulacaoModal from './ReverterAnulacaoModal.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { ROTULO_TIPO, type FeriadoDoDia } from '@/services/feriado.service';
 
 	interface Props {
 		colaboradorId: string;
@@ -60,12 +61,14 @@
 		if (espelho) {
 			for (const d of espelho.dias) mapa.set(d.date, d);
 		}
+		const feriados = new Map((espelho?.feriados ?? []).map((f) => [f.data, f]));
 		const out: Array<{
 			date: string;
 			diaSemana: number;
 			diaNum: number;
 			summary: EspelhoDia | null;
 			isFimSemana: boolean;
+			feriado: FeriadoDoDia | null;
 		}> = [];
 		for (let d = 1; d <= totalDias; d++) {
 			const date = `${ano}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -76,7 +79,8 @@
 				diaSemana: dow,
 				diaNum: d,
 				summary: mapa.get(date) ?? null,
-				isFimSemana: dow === 0 || dow === 6
+				isFimSemana: dow === 0 || dow === 6,
+				feriado: feriados.get(date) ?? null
 			});
 		}
 		return out;
@@ -251,7 +255,7 @@
 					<tbody>
 						{#each diasVisiveis as dia (dia.date)}
 							{@const ajustado = ajustadoNoDia(dia.summary)}
-							<tr class:fim-semana={dia.isFimSemana}>
+							<tr class:fim-semana={dia.isFimSemana || (dia.feriado && !dia.feriado.escalado)}>
 								<td class="dia">
 									<!-- Sempre presente para manter as datas alinhadas; só pinta no dia ajustado. -->
 									<span
@@ -263,6 +267,13 @@
 									></span>
 									<span class="dia-num">{formatDataCurta(dia.date)}</span>
 									<span class="dia-sem">{DIA_SEMANA[dia.diaSemana]}</span>
+									{#if dia.feriado}
+										<span class="dia-feriado" title={dia.feriado.nome}
+											>{ROTULO_TIPO[dia.feriado.tipo]}{dia.feriado.escalado
+												? ' · escalado'
+												: ''}</span
+										>
+									{/if}
 								</td>
 								{#each TIPOS_ORDEM as tipo (tipo)}
 									{@const registro = picker(dia.summary, tipo)}
@@ -615,6 +626,15 @@
 	.dia-sem {
 		font-size: 0.75rem;
 		color: var(--color-text-subtle);
+	}
+
+	.dia-feriado {
+		margin-left: 0.35rem;
+		font-size: 0.65rem;
+		font-weight: 700;
+		color: var(--color-danger-dot);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
 	}
 
 	.cel {

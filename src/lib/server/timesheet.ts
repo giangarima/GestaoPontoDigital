@@ -19,6 +19,7 @@ import type { Registro, RegistroAnulacao } from '@/lib/server/prisma-client/clie
 import { formatNsr } from '@/lib/server/nsr';
 import { dataPura, diaDaDataPura, diaDe } from '@/lib/server/periodo';
 import { apurarDia } from '@/lib/server/apuracao';
+import type { FeriadoDoDia, FeriadosColaborador } from '@/lib/server/feriado/calendario';
 
 export interface AnulacaoDTO {
 	motivo: string;
@@ -49,6 +50,8 @@ export interface DailySummaryDTO {
 	abonado: boolean;
 	/** Dia dentro da tolerância do art. 58, §1º da CLT: sem extras nem déficit. */
 	tolerancia: boolean;
+	/** Feriado ou ponto facultativo do dia (`escalado` = o dia segue a jornada). */
+	feriado: FeriadoDoDia | null;
 }
 
 export type RegistroComAnulacao = Registro & { anulacao?: RegistroAnulacao | null };
@@ -111,6 +114,8 @@ export interface OpcoesResumo {
 	previstas?: (dia: string) => Date[] | null;
 	/** Dias (AAAA-MM-dd) com ausência aprovada — sem déficit. */
 	datasAbonadas?: Set<string>;
+	/** Feriados do colaborador: fora da escala, dia sem expediente — como no espelho. */
+	feriados?: FeriadosColaborador;
 	/** Quais registros contam (padrão: os não anulados). */
 	isValida?: RegistroValido;
 	/** Dia de hoje: hoje e depois o dia ainda está em andamento (sem déficit). */
@@ -155,11 +160,16 @@ export function buildSummary(
 	const isValida = opcoes.isValida ?? NAO_ANULADA;
 	const abonado = opcoes.datasAbonadas?.has(date) ?? false;
 	const emAndamento = date >= (opcoes.hoje ?? diaDe(new Date()));
+	const feriado = opcoes.feriados?.get(date) ?? null;
+	const contratualMin = opcoes.contratualMin(date);
+	// Fora da escala do feriado: sem expediente (0) e sem horário previsto — a
+	// mesma regra do espelho.
+	const semExpediente = feriado !== null && !feriado.escalado;
 	const apuracao = apurarDia(
 		registros.filter(isValida).map((p) => p.marcadoEm),
-		opcoes.contratualMin(date),
+		semExpediente && contratualMin !== null ? 0 : contratualMin,
 		abonado,
-		opcoes.previstas?.(date) ?? undefined
+		semExpediente ? undefined : (opcoes.previstas?.(date) ?? undefined)
 	);
 
 	return {
@@ -169,6 +179,7 @@ export function buildSummary(
 		overtime: horas(apuracao.extraMin),
 		deficit: emAndamento ? 0 : horas(apuracao.deficitMin),
 		abonado,
-		tolerancia: apuracao.toleranciaMin > 0
+		tolerancia: apuracao.toleranciaMin > 0,
+		feriado
 	};
 }

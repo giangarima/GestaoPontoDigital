@@ -25,9 +25,12 @@
  *    dia, contando todas as marcações (válidas e desconsideradas) em ordem.
  *  - DSR = domingo sem expediente na jornada; falta não justificada = dia com
  *    expediente, sem marcação válida e sem ausência aprovada, até ontem.
+ *  - Feriado/ponto facultativo fora da escala é dia sem expediente (como no
+ *    espelho): sem horário contratual e sem registro 07. Escalado segue a jornada.
  *  - Horário noturno sem a redução da hora noturna em durJornada.
  */
 
+import type { FeriadosColaborador } from '@/lib/server/feriado/calendario';
 import { padAlpha, padNum, toD, toDH, ASSINATURA_LITERAL } from '@/lib/server/afd/format';
 import {
 	AEJ_VERSAO_LEIAUTE,
@@ -74,6 +77,8 @@ export interface VinculoAej {
 	versoes: VersaoVigencia[];
 	/** Datas (AAAA-MM-dd) cobertas por ausência aprovada (férias, atestado, folga…). */
 	diasAbonados: Set<string>;
+	/** Feriados do período do ponto de vista deste vínculo (escalado ou não). */
+	feriados: FeriadosColaborador;
 	marcacoes: MarcacaoAej[];
 }
 
@@ -176,7 +181,10 @@ export function montarLinhasAej(e: AejEntrada): string[] {
 		}
 
 		for (const dia of dias) {
-			const horario = vigente(dia) ? horarioContratualDoDia(v.versoes, dia) : null;
+			const feriado = v.feriados.get(dia);
+			const semExpediente = feriado !== undefined && !feriado.escalado;
+			const horario =
+				vigente(dia) && !semExpediente ? horarioContratualDoDia(v.versoes, dia) : null;
 			const doDia = porDia.get(dia) ?? [];
 
 			let validas = 0;
