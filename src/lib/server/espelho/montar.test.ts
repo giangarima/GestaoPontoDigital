@@ -213,6 +213,17 @@ describe('montarEspelho', () => {
 			realizadoMin: 240,
 			deficitMin: 0
 		});
+		expect(esp.totais.diasEmAberto).toBe(1);
+	});
+
+	it('marcação ímpar hoje ainda não é dia em aberto', () => {
+		const esp = montarEspelho(
+			entrada({
+				emitidoEm: brt('2026-01-05T09:00'),
+				marcacoes: [original('2026-01-05T08:00', 1)]
+			})
+		);
+		expect(esp.totais.diasEmAberto).toBe(0);
 	});
 
 	it('hoje e dias futuros estão em andamento: sem falta', () => {
@@ -257,5 +268,58 @@ describe('montarEspelho', () => {
 			extraMin: 120,
 			ocorrencia: ''
 		});
+	});
+});
+
+describe('previsto do período (base do consolidado)', () => {
+	it('semana encerrada: dias com expediente e a jornada contratual somada', () => {
+		const esp = montarEspelho(entrada());
+		expect(esp.totais).toMatchObject({ diasPrevistos: 5, previstoMin: 4 * 480 + 240 });
+	});
+
+	it('conta até hoje, inclusive; dias futuros ficam de fora', () => {
+		const esp = montarEspelho(entrada({ emitidoEm: brt('2026-01-07T09:00') }));
+		// seg, ter e qua (hoje)
+		expect(esp.totais).toMatchObject({ diasPrevistos: 3, previstoMin: 3 * 480 });
+	});
+
+	it('ausência aprovada e dias fora do vínculo não entram no previsto', () => {
+		const esp = montarEspelho(
+			entrada({
+				trabalhador: { ...entrada().trabalhador, admissao: new Date('2026-01-06T00:00:00Z') },
+				ausencias: [
+					{
+						tipo: 'atestado',
+						dataInicio: new Date('2026-01-07T00:00:00Z'),
+						dataFim: new Date('2026-01-07T00:00:00Z')
+					}
+				]
+			})
+		);
+		// ter, qui e sex: segunda é antes da admissão, quarta está abonada.
+		expect(esp.totais).toMatchObject({ diasPrevistos: 3, previstoMin: 2 * 480 + 240 });
+	});
+
+	it('trabalhados + faltas + dias em aberto sem par fecham com o previsto', () => {
+		const esp = montarEspelho(
+			entrada({
+				marcacoes: [
+					original('2026-01-05T08:00', 1),
+					original('2026-01-05T17:00', 2),
+					original('2026-01-06T08:00', 3) // em aberto, sem nenhum par
+				]
+			})
+		);
+		const emAbertoSemPar = esp.dias.filter(
+			(d) => d.ocorrencia === 'Incompleto' && d.realizadoMin === 0
+		).length;
+		expect(esp.totais.diasTrabalhados + esp.totais.faltas + emAbertoSemPar).toBe(
+			esp.totais.diasPrevistos
+		);
+	});
+
+	it('sem jornada: nada previsto', () => {
+		const esp = montarEspelho(entrada({ versoes: [] }));
+		expect(esp.totais).toMatchObject({ diasPrevistos: 0, previstoMin: 0 });
 	});
 });

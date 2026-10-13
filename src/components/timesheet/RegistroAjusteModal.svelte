@@ -3,7 +3,7 @@
   @description Modal para admin corrigir uma batida existente.
 
   Ação principal "Salvar ajuste": anula a batida original e cria a corrigida,
-  vinculadas (POST .../ajustar). Ação secundária "Anular sem substituir":
+  vinculadas (POST .../ajustar). Ação secundária "Anular":
   apenas invalida a batida (POST .../anular), para casos como clique duplicado.
   Conformidade Portaria 671: a batida original nunca é alterada nem removida.
 -->
@@ -170,7 +170,7 @@
 						onclick={handleAnular}
 						disabled={salvando}
 					>
-						Anular sem substituir
+						Anular
 					</button>
 					<div class="footer-direita">
 						<button

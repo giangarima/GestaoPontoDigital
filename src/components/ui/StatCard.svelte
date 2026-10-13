@@ -1,6 +1,6 @@
 <!--
   @component StatCard
-  @description Card colorido com valor grande + label.
+  @description Card colorido com valor grande + label, detalhe opcional e, com `href`, vira link.
 -->
 <script lang="ts">
 	type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
@@ -9,15 +9,20 @@
 		label: string;
 		value: string | number;
 		tone?: Tone;
+		detalhe?: string;
+		href?: string;
 	}
 
-	let { label, value, tone = 'info' }: Props = $props();
+	let { label, value, tone = 'info', detalhe, href }: Props = $props();
 </script>
 
-<div class="stat stat--{tone}">
+<svelte:element this={href ? 'a' : 'div'} {href} class="stat stat--{tone}" class:stat--link={href}>
 	<span class="stat__value">{value}</span>
 	<span class="stat__label">{label}</span>
-</div>
+	{#if detalhe}
+		<span class="stat__detalhe">{detalhe}</span>
+	{/if}
+</svelte:element>
 
 <style>
 	.stat {
@@ -42,6 +47,21 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		opacity: 0.8;
+	}
+
+	.stat__detalhe {
+		font-size: 0.75rem;
+		opacity: 0.75;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.stat--link {
+		text-decoration: none;
+		transition: filter 0.15s;
+	}
+
+	.stat--link:hover {
+		filter: brightness(1.15);
 	}
 
 	.stat--success {

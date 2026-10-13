@@ -33,7 +33,6 @@
 	let loading = $state(true);
 	let errorMsg = $state('');
 	/** Hora da última carga bem-sucedida, já formatada — só é usada para exibir. */
-	let atualizadoAs = $state<string | null>(null);
 
 	function formatarDia(d: Date): string {
 		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -87,10 +86,6 @@
 		errorMsg = '';
 		try {
 			painel = await adminService.dashboard(dataRef, controller.signal);
-			atualizadoAs = new Date().toLocaleTimeString('pt-BR', {
-				hour: '2-digit',
-				minute: '2-digit'
-			});
 		} catch (e) {
 			// Abortada por uma requisição mais nova: quem mandou abortar cuida da tela.
 			if ((e as { name?: string }).name === 'AbortError') return;
@@ -406,13 +401,6 @@
 		</div>
 
 		<p class="barra-dia__rotulo">{dataPorExtenso}</p>
-
-		{#if atualizadoAs}
-			<p class="barra-dia__status" aria-live="polite">
-				<span class="barra-dia__ponto" class:barra-dia__ponto--vivo={ehHoje}></span>
-				Atualizado às {atualizadoAs}{ehHoje ? ' · atualiza sozinho' : ''}
-			</p>
-		{/if}
 	</div>
 
 	{#if errorMsg}

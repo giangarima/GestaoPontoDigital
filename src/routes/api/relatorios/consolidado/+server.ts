@@ -1,6 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
-import { calcularHorasEsperadasMes } from '@/lib/server/jornada';
 import { apurarPeriodo } from '@/lib/server/espelho/montar';
 import { ausenciaNoPeriodo, diasDoMes, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
@@ -18,7 +17,6 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		return jsonError('mes é obrigatório no formato YYYY-MM', 400);
 	}
 
-	const [ano, mesNum] = mes.split('-').map(Number);
 	const periodo = diasDoMes(mes);
 
 	const colaboradores = await prisma.colaborador.findMany({
@@ -71,16 +69,18 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		});
 		const ferias = ausenciasColab.filter((a) => a.tipo === 'ferias').length;
 		const faltasJustificadas = ausenciasColab.filter((a) => a.tipo !== 'ferias').length;
-		const horasEsperadas = c.jornada
-			? calcularHorasEsperadasMes(c.jornada.versoes, ano, mesNum)
-			: 0;
 
 		return {
 			colaboradorId: c.id,
 			colaboradorNome: c.usuario.nome,
 			diasTrabalhados: totais.diasTrabalhados,
+			diasPrevistos: totais.diasPrevistos,
 			horas: horas(totais.realizadoMin),
-			horasEsperadas: Number(horasEsperadas.toFixed(2)),
+			horasPrevistas: horas(totais.previstoMin),
+			faltas: totais.faltas,
+			diasEmAberto: totais.diasEmAberto,
+			// Banco de horas do mês: extras − déficit. Os dois seguem separados para o CSV.
+			saldo: horas(totais.extraMin - totais.deficitMin),
 			extras: horas(totais.extraMin),
 			deficit: horas(totais.deficitMin),
 			periodosFerias: ferias,

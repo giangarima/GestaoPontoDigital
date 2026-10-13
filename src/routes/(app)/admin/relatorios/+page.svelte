@@ -4,8 +4,13 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { relatorioService, type ConsolidadoRelatorio } from '@/services/relatorio.service';
+	import {
+		relatorioService,
+		type ConsolidadoLinha,
+		type ConsolidadoRelatorio
+	} from '@/services/relatorio.service';
 	import { colaboradorService } from '@/services/colaborador.service';
 	import { baixar } from '@/services/api';
 	import type { Colaborador } from '@/types/colaborador';
@@ -18,7 +23,6 @@
 	import StatCard from '@/components/ui/StatCard.svelte';
 
 	type Aba = 'espelho' | 'consolidado';
-	type Filtro = 'todos' | 'extras' | 'deficit';
 
 	let aba = $state<Aba>('espelho');
 	let colaboradores = $state<Colaborador[]>([]);
@@ -42,7 +46,6 @@
 	let mes = $state(mesDefault);
 	let conResult = $state<ConsolidadoRelatorio | null>(null);
 	let conLoading = $state(false);
-	let filtro = $state<Filtro>('todos');
 	let filtroDepartamentoId = $state<string>('todos');
 
 	const departamentosDisponiveis = $derived.by(() => {
@@ -57,34 +60,86 @@
 
 	const linhasFiltradas = $derived.by(() => {
 		if (!conResult) return [];
-		let linhas = conResult.linhas;
-		if (filtroDepartamentoId !== 'todos') {
-			const idsDoDepto = new Set(
-				colaboradores.filter((c) => c.departamentoId === filtroDepartamentoId).map((c) => c.id)
-			);
-			linhas = linhas.filter((l) => idsDoDepto.has(l.colaboradorId));
-		}
-		if (filtro === 'extras') return linhas.filter((l) => l.extras > 0);
-		if (filtro === 'deficit') return linhas.filter((l) => l.deficit > 0);
-		return linhas;
+		if (filtroDepartamentoId === 'todos') return conResult.linhas;
+		const idsDoDepto = new Set(
+			colaboradores.filter((c) => c.departamentoId === filtroDepartamentoId).map((c) => c.id)
+		);
+		return conResult.linhas.filter((l) => idsDoDepto.has(l.colaboradorId));
 	});
 
-	const totais = $derived.by(() => {
-		if (!conResult) return { horas: 0, extras: 0, deficit: 0, faltas: 0 };
-		return conResult.linhas.reduce(
-			(acc, l) => ({
-				horas: acc.horas + l.horas,
-				extras: acc.extras + l.extras,
-				deficit: acc.deficit + l.deficit,
-				faltas: acc.faltas + l.faltasJustificadas
-			}),
-			{ horas: 0, extras: 0, deficit: 0, faltas: 0 }
+	const avatarColors = ['#2563eb', '#7c3aed', '#0891b2', '#16a34a', '#d97706'];
+
+	type Ordem = 'cumprimento' | 'faltas' | 'diasEmAberto' | 'saldo';
+	// Padrão: quem mais deve no topo.
+	let ordem = $state<Ordem>('saldo');
+	let asc = $state(true);
+
+	/** Horas realizadas sobre as previstas, em %; null sem jornada. */
+	const cumprimento = (horas: number, previstas: number) =>
+		previstas > 0 ? Math.round((horas / previstas) * 100) : null;
+
+	const linhasOrdenadas = $derived.by(() => {
+		const valor = (l: ConsolidadoLinha) =>
+			ordem === 'cumprimento' ? (cumprimento(l.horas, l.horasPrevistas) ?? Infinity) : l[ordem];
+		return [...linhasFiltradas].sort(
+			(a, b) =>
+				(asc ? valor(a) - valor(b) : valor(b) - valor(a)) ||
+				a.colaboradorNome.localeCompare(b.colaboradorNome)
 		);
 	});
 
-	const maxHoras = $derived(
-		conResult ? Math.max(1, ...conResult.linhas.flatMap((l) => [l.horas, l.horasEsperadas])) : 1
+	function ordenarPor(coluna: Ordem) {
+		if (ordem === coluna) asc = !asc;
+		else {
+			ordem = coluna;
+			// Cumprimento: o menor é o que preocupa; nas contagens, o maior.
+			asc = coluna === 'cumprimento' || coluna === 'saldo';
+		}
+	}
+
+	const totais = $derived.by(() => {
+		const t = {
+			horas: 0,
+			horasPrevistas: 0,
+			credito: 0,
+			debito: 0,
+			faltas: 0,
+			comFalta: 0,
+			emAberto: 0
+		};
+		for (const l of linhasFiltradas) {
+			t.horas += l.horas;
+			t.horasPrevistas += l.horasPrevistas;
+			if (l.saldo > 0) t.credito += l.saldo;
+			else t.debito += l.saldo;
+			t.faltas += l.faltas;
+			if (l.faltas > 0) t.comFalta++;
+			t.emAberto += l.diasEmAberto;
+		}
+		return { ...t, saldo: t.credito + t.debito };
+	});
+
+	// Escala comum das barras de saldo: o maior desvio ocupa meia trilha.
+	const maxSaldo = $derived(Math.max(1, ...linhasFiltradas.map((l) => Math.abs(l.saldo))));
+
+	/** Banco de horas com sinal explícito: "+4h 29min", "-7h 34min". */
+	const formatSaldo = (horas: number) => (horas > 0 ? '+' : '') + formatHoursMinutes(horas * 60);
+
+	// Cor do avatar presa à pessoa (ordem alfabética da resposta), não à posição na tabela.
+	const corDoColaborador = $derived(
+		new Map(
+			(conResult?.linhas ?? []).map((l, i) => [
+				l.colaboradorId,
+				avatarColors[i % avatarColors.length]
+			])
+		)
 	);
+
+	function abrirEspelho(colaboradorId: string) {
+		espColaboradorId = colaboradorId;
+		espMes = mes;
+		aba = 'espelho';
+	}
 
 	async function carregarConsolidado(e?: Event) {
 		e?.preventDefault();
@@ -101,13 +156,31 @@
 
 	function exportarCsv() {
 		if (!conResult) return;
-		const headers = ['Colaborador', 'Dias', 'Horas', 'Extras', 'Déficit', 'Férias', 'Justificadas'];
+		const headers = [
+			'Colaborador',
+			'Dias',
+			'Dias previstos',
+			'Horas',
+			'Horas previstas',
+			'Faltas',
+			'Em aberto',
+			'Extras',
+			'Déficit',
+			'Banco',
+			'Férias',
+			'Justificadas'
+		];
 		const rows = conResult.linhas.map((l) => [
 			l.colaboradorNome,
 			l.diasTrabalhados,
+			l.diasPrevistos,
 			l.horas,
+			l.horasPrevistas,
+			l.faltas,
+			l.diasEmAberto,
 			l.extras,
 			l.deficit,
+			l.saldo,
 			l.periodosFerias,
 			l.faltasJustificadas
 		]);
@@ -199,14 +272,23 @@
 			.toUpperCase();
 	}
 
-	const avatarColors = ['#2563eb', '#7c3aed', '#0891b2', '#16a34a', '#d97706'];
-
 	onMount(async () => {
 		colaboradores = await colaboradorService.listar();
 	});
 </script>
 
 <svelte:head><title>Relatórios — Admin</title></svelte:head>
+
+{#snippet th(coluna: Ordem, rotulo: string)}
+	<th class="right" aria-sort={ordem === coluna ? (asc ? 'ascending' : 'descending') : 'none'}>
+		<button type="button" class="th-sort" onclick={() => ordenarPor(coluna)}>
+			{rotulo}
+			<span class="th-sort__seta" class:is-active={ordem === coluna}>
+				{ordem === coluna && !asc ? '↓' : '↑'}
+			</span>
+		</button>
+	</th>
+{/snippet}
 
 <section class="admin-page">
 	<header class="admin-page__header">
@@ -335,64 +417,38 @@
 			<div class="stats">
 				<StatCard
 					tone="info"
-					label="Total de horas"
-					value={formatHoursMinutes(totais.horas * 60)}
+					label="Cumprimento"
+					value={cumprimento(totais.horas, totais.horasPrevistas) === null
+						? '—'
+						: `${cumprimento(totais.horas, totais.horasPrevistas)}%`}
+					detalhe="{formatHoursMinutes(totais.horas * 60)} de {formatHoursMinutes(
+						totais.horasPrevistas * 60
+					)} previstas"
 				/>
 				<StatCard
-					tone="success"
-					label="Horas extras"
-					value="+{formatHoursMinutes(totais.extras * 60)}"
+					tone={totais.saldo < 0 ? 'danger' : 'success'}
+					label="Banco do mês"
+					value={formatSaldo(totais.saldo)}
+					detalhe="{formatSaldo(totais.credito)} a compensar · {formatSaldo(totais.debito)} devidas"
 				/>
 				<StatCard
-					tone="danger"
-					label="Déficit acum."
-					value="-{formatHoursMinutes(totais.deficit * 60)}"
+					tone={totais.faltas > 0 ? 'danger' : 'neutral'}
+					label="Faltas"
+					value={totais.faltas}
+					detalhe={totais.comFalta === 1 ? 'em 1 pessoa' : `em ${totais.comFalta} pessoas`}
 				/>
-				<StatCard tone="warning" label="Justificadas" value={totais.faltas} />
+				<StatCard
+					tone={totais.emAberto > 0 ? 'warning' : 'neutral'}
+					label="Dias em aberto"
+					value={totais.emAberto}
+					detalhe={totais.emAberto > 0 ? 'o banco ainda pode mudar →' : 'nada a tratar'}
+					href="{resolve('/admin/pendencias', {})}?mes={mes}"
+				/>
 			</div>
-
-			<Card>
-				<h2 class="card-title">Horas trabalhadas por colaborador</h2>
-				<div class="bars">
-					{#each conResult.linhas as l, i (l.colaboradorId)}
-						<div class="bar-row">
-							<div class="bar__name">{l.colaboradorNome.split(' ')[0]}</div>
-							<div class="bar__track">
-								{#if l.horasEsperadas > 0}
-									<div
-										class="bar__expected"
-										style="width: {(l.horasEsperadas / maxHoras) * 100}%"
-										title="Esperado: {formatHoursMinutes(l.horasEsperadas * 60)}"
-									></div>
-								{/if}
-								<div
-									class="bar__fill"
-									style="width: {(l.horas / maxHoras) * 100}%; background: {avatarColors[
-										i % avatarColors.length
-									]};"
-								>
-									<span class="bar__value">{formatHoursMinutes(l.horas * 60)}</span>
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			</Card>
 
 			<Card>
 				<header class="card-header">
 					<h2 class="card-title">Detalhamento</h2>
-					<div class="chips">
-						{#each [['todos', 'Todos'], ['extras', 'Com extras'], ['deficit', 'Com déficit']] as [val, label] (val)}
-							<button
-								class="chip"
-								class:is-active={filtro === val}
-								onclick={() => (filtro = val as Filtro)}
-							>
-								{label}
-							</button>
-						{/each}
-					</div>
 				</header>
 
 				<div class="table-wrap">
@@ -400,40 +456,65 @@
 						<thead>
 							<tr>
 								<th>Colaborador</th>
+								{@render th('cumprimento', 'Cumpr.')}
 								<th class="right">Dias trab.</th>
-								<th class="right">Horas</th>
-								<th class="right">Extras</th>
-								<th class="right">Déficit</th>
+								{@render th('faltas', 'Faltas')}
+								{@render th('diasEmAberto', 'Em aberto')}
 								<th class="right">Justif.</th>
+								{@render th('saldo', 'Banco do mês')}
 							</tr>
 						</thead>
 						<tbody>
-							{#each linhasFiltradas as l, i (l.colaboradorId)}
+							{#each linhasOrdenadas as l (l.colaboradorId)}
+								{@const pct = cumprimento(l.horas, l.horasPrevistas)}
 								<tr>
 									<td>
-										<div class="cell-name">
+										<button
+											type="button"
+											class="cell-name"
+											onclick={() => abrirEspelho(l.colaboradorId)}
+											title="Abrir espelho de ponto"
+										>
 											<Avatar
 												initials={initialsFromName(l.colaboradorNome)}
 												size={28}
-												color={avatarColors[i % avatarColors.length]}
+												color={corDoColaborador.get(l.colaboradorId)}
 											/>
 											<span>{l.colaboradorNome}</span>
-										</div>
+										</button>
 									</td>
-									<td class="right">{l.diasTrabalhados}</td>
-									<td class="right num">{formatHoursMinutes(l.horas * 60)}</td>
+									<td
+										class="right num"
+										title="{formatHoursMinutes(l.horas * 60)} de {formatHoursMinutes(
+											l.horasPrevistas * 60
+										)}"
+									>
+										{#if pct === null}<span class="dash">—</span>{:else}{pct}%{/if}
+									</td>
 									<td class="right">
-										{#if l.extras > 0}
-											<span class="pos">+{formatHoursMinutes(l.extras * 60)}</span>
+										{l.diasTrabalhados}{#if l.diasPrevistos > 0}<span class="previsto"
+												>{` / ${l.diasPrevistos}`}</span
+											>{/if}
+									</td>
+									<td class="right">
+										{#if l.faltas > 0}
+											<span class="neg">{l.faltas}</span>
 										{:else}
-											<span class="dash">—</span>
+											<span class="dash">0</span>
 										{/if}
 									</td>
 									<td class="right">
-										{#if l.deficit > 0}
-											<span class="neg">-{formatHoursMinutes(l.deficit * 60)}</span>
+										{#if l.diasEmAberto > 0}
+											<a
+												class="warn"
+												href="{resolve(
+													'/admin/ajustes',
+													{}
+												)}?colaboradorId={l.colaboradorId}&mes={mes}"
+												title="Tratar nos ajustes">{l.diasEmAberto}</a
+											>
 										{:else}
-											<span class="dash">—</span>
+											<span class="dash">0</span>
 										{/if}
 									</td>
 									<td class="right">
@@ -442,6 +523,26 @@
 										{:else}
 											<span class="dash">0</span>
 										{/if}
+									</td>
+									<td>
+										<div class="saldo">
+											<div class="saldo__trilha" aria-hidden="true">
+												{#if l.saldo !== 0}
+													<div
+														class="saldo__barra"
+														class:saldo__barra--neg={l.saldo < 0}
+														style="width: {(Math.abs(l.saldo) / maxSaldo) * 50}%"
+													></div>
+												{/if}
+											</div>
+											<span class="saldo__valor num">
+												{#if l.saldo !== 0}
+													<span class={l.saldo > 0 ? 'pos' : 'neg'}>{formatSaldo(l.saldo)}</span>
+												{:else}
+													<span class="dash">—</span>
+												{/if}
+											</span>
+										</div>
 									</td>
 								</tr>
 							{/each}
@@ -558,90 +659,6 @@
 		gap: 0.5rem;
 	}
 
-	.bars {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		margin-top: 0.75rem;
-	}
-
-	.bar-row {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.bar__name {
-		width: 90px;
-		font-size: 0.8rem;
-		color: var(--color-text-secondary);
-		font-weight: 500;
-		flex-shrink: 0;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.bar__track {
-		flex: 1;
-		height: 28px;
-		background: var(--color-border-soft);
-		border-radius: var(--radius-pill);
-		overflow: hidden;
-		position: relative;
-	}
-
-	.bar__expected {
-		position: absolute;
-		left: 0;
-		top: 0;
-		height: 100%;
-		background: var(--color-border);
-		border-radius: var(--radius-pill);
-	}
-
-	.bar__fill {
-		height: 100%;
-		border-radius: var(--radius-pill);
-		opacity: 0.85;
-		transition: width 0.6s ease;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		padding-right: 8px;
-		position: relative;
-		z-index: 1;
-	}
-
-	.bar__value {
-		color: #fff;
-		font-size: 0.7rem;
-		font-weight: 700;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.chips {
-		display: flex;
-		gap: 0.375rem;
-	}
-
-	.chip {
-		padding: 0.25rem 0.625rem;
-		border-radius: var(--radius-pill);
-		font-size: 0.75rem;
-		font-weight: 500;
-		cursor: pointer;
-		font-family: inherit;
-		background: var(--color-border-soft);
-		color: var(--color-text-muted);
-		border: none;
-	}
-
-	.chip.is-active {
-		background: var(--color-primary);
-		color: var(--color-on-primary);
-	}
-
 	.table-wrap {
 		overflow-x: auto;
 	}
@@ -686,6 +703,102 @@
 		gap: 0.5rem;
 		font-weight: 600;
 		color: var(--color-text);
+		background: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.cell-name:hover span {
+		color: var(--color-primary);
+		text-decoration: underline;
+	}
+
+	.th-sort {
+		background: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		color: inherit;
+		text-transform: inherit;
+		letter-spacing: inherit;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.th-sort__seta {
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+
+	.th-sort:hover .th-sort__seta {
+		opacity: 0.4;
+	}
+
+	.th-sort__seta.is-active {
+		opacity: 1;
+		color: var(--color-primary);
+	}
+
+	/* Banco do mês: barra divergente com o zero no centro + valor com sinal. */
+	.saldo {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-width: 15rem;
+	}
+
+	.saldo__trilha {
+		position: relative;
+		flex: 1;
+		height: 0.5rem;
+		border-radius: var(--radius-pill);
+		background: var(--color-surface-muted);
+	}
+
+	.saldo__trilha::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: -0.25rem;
+		bottom: -0.25rem;
+		width: 1px;
+		background: var(--color-border-strong);
+	}
+
+	.saldo__barra {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 50%;
+		border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+		background: var(--color-success);
+	}
+
+	.saldo__barra--neg {
+		left: auto;
+		right: 50%;
+		border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+		background: var(--color-danger);
+	}
+
+	.saldo__valor {
+		width: 6.5rem;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+
+	a.warn {
+		text-decoration: none;
+	}
+
+	a.warn:hover {
+		text-decoration: underline;
 	}
 
 	.pos {
@@ -705,6 +818,11 @@
 
 	.dash {
 		color: var(--color-border-strong);
+	}
+
+	.previsto {
+		color: var(--color-text-muted);
+		font-weight: 500;
 	}
 
 	.muted {

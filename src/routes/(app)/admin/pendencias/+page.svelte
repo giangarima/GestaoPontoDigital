@@ -9,6 +9,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { adminService, type Pendencias } from '@/services/admin.service';
 	import Badge from '@/components/ui/Badge.svelte';
@@ -20,7 +21,9 @@
 	const hoje = new Date();
 	const mesDefault = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
 
-	let mes = $state(mesDefault);
+	// ?mes=AAAA-MM vem do link do consolidado mensal.
+	const mesDaUrl = page.url.searchParams.get('mes');
+	let mes = $state(mesDaUrl && /^\d{4}-\d{2}$/.test(mesDaUrl) ? mesDaUrl : mesDefault);
 	let dados = $state<Pendencias | null>(null);
 	let loading = $state(false);
 	let errorMsg = $state('');

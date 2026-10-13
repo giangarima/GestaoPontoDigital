@@ -30,8 +30,13 @@ export interface ConsolidadoLinha {
 	colaboradorId: string;
 	colaboradorNome: string;
 	diasTrabalhados: number;
+	diasPrevistos: number;
 	horas: number;
-	horasEsperadas: number;
+	horasPrevistas: number;
+	faltas: number;
+	diasEmAberto: number;
+	/** Banco de horas do mês (extras − déficit), em horas, com sinal. */
+	saldo: number;
 	extras: number;
 	deficit: number;
 	periodosFerias: number;

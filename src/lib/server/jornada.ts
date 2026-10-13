@@ -234,21 +234,3 @@ export function contratualPorDia(
 	if (!versoes?.length) return () => null;
 	return (dia) => horarioContratualDoDia(versoes, dia)?.minutos ?? 0;
 }
-
-/**
- * Horas previstas no mês (decimal), resolvendo a versão vigente em cada dia —
- * assim editar o horário não altera meses passados. `mesNum` é 1-12.
- */
-export function calcularHorasEsperadasMes(
-	versoes: VersaoVigencia[],
-	ano: number,
-	mesNum: number
-): number {
-	const ultimoDia = new Date(Date.UTC(ano, mesNum, 0)).getUTCDate();
-	let total = 0;
-	for (let d = 1; d <= ultimoDia; d++) {
-		const dia = `${ano}-${String(mesNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-		total += horarioContratualDoDia(versoes, dia)?.minutos ?? 0;
-	}
-	return total / 60;
-}

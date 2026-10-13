@@ -17,6 +17,8 @@
  *    ausência aprovada, anterior à emissão. Conta o dia contratual inteiro de déficit.
  *  - DSR = domingo sem expediente; demais dias sem expediente = folga.
  *  - Hoje e dias futuros estão em andamento: sem falta nem déficit.
+ *  - Previsto = dias com expediente até hoje (inclusive), no vínculo e sem
+ *    ausência aprovada — a base de comparação do consolidado.
  *
  * PURO (sem Prisma) — ver `gerar.ts` para a carga do banco.
  */
@@ -130,6 +132,12 @@ export interface TotaisEspelho {
 	deficitMin: number;
 	diasTrabalhados: number;
 	faltas: number;
+	/** Dias com expediente até hoje, no vínculo e sem ausência aprovada. */
+	diasPrevistos: number;
+	/** Jornada contratual desses dias. */
+	previstoMin: number;
+	/** Dias encerrados com marcação ímpar — o mesmo critério de `pendencias.ts`. */
+	diasEmAberto: number;
 }
 
 export interface ApuracaoPeriodo {
@@ -233,6 +241,8 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		return item;
 	};
 
+	let diasPrevistos = 0;
+	let previstoMin = 0;
 	const dias: DiaEspelho[] = diasEntre(e.inicio, e.fim).map((dia) => {
 		const semana = SEMANA[dataPura(dia).getUTCDay()];
 		const doDia = porDia.get(dia) ?? [];
@@ -253,6 +263,10 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		const apuracao = apurarDia(validas, contratual, ausencia !== undefined, previstas);
 
 		const emAndamento = dia >= hoje;
+		if (dia <= hoje && !ausencia && contratual !== null && contratual > 0) {
+			diasPrevistos++;
+			previstoMin += contratual;
+		}
 		const falta =
 			!emAndamento && !ausencia && contratual !== null && contratual > 0 && validas.length === 0;
 
@@ -308,7 +322,10 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 			extraMin: soma('extraMin'),
 			deficitMin: soma('deficitMin'),
 			diasTrabalhados: dias.filter((d) => d.realizadoMin > 0).length,
-			faltas: dias.filter((d) => d.falta).length
+			faltas: dias.filter((d) => d.falta).length,
+			diasPrevistos,
+			previstoMin,
+			diasEmAberto: dias.filter((d) => d.ocorrencia === 'Incompleto').length
 		},
 		tratamentos
 	};
