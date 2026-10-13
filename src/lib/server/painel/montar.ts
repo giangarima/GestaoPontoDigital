@@ -15,7 +15,8 @@
  * nenhum — o espelho é o documento legal.
  */
 import { apurarDia } from '@/lib/server/apuracao';
-import { horarioContratualDoDia, marcacoesPrevistas } from '@/lib/server/jornada';
+import { horarioDoDia, type EscalaColaborador } from '@/lib/server/escala/calendario';
+import { marcacoesPrevistas } from '@/lib/server/jornada';
 import type { VersaoVigencia } from '@/lib/server/jornada';
 import type { FeriadoDoDia } from '@/lib/server/feriado/calendario';
 import { diaDe, minutosDoDia, type Dia } from '@/lib/server/periodo';
@@ -110,6 +111,8 @@ export interface ColaboradorPainel {
 	nome: string;
 	departamento: string | null;
 	versoes: VersaoVigencia[];
+	/** Escala de folga (`null` = padrão semanal da jornada). */
+	escala: EscalaColaborador | null;
 	/** Instantes das marcações válidas do dia, em ordem. */
 	marcacoes: Date[];
 	/** Ausência aprovada que cobre o dia, se houver. */
@@ -199,7 +202,7 @@ export function montarLinha(
 	// Fora da escala do feriado: sem horário contratual, como no espelho — nem
 	// falta, nem atraso. Escalado é acompanhado como num dia comum.
 	const foraDaEscala = c.feriado !== null && !c.feriado.escalado;
-	const horario = foraDaEscala ? null : horarioContratualDoDia(c.versoes, dia);
+	const horario = foraDaEscala ? null : horarioDoDia(c.versoes, c.escala, dia);
 	const semJornada = c.versoes.length === 0;
 	const previstas = horario ? marcacoesPrevistas(dia, horario.pares) : null;
 	// 0 = sem expediente (folga/DSR); null = sem jornada cadastrada.

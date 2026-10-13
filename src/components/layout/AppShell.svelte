@@ -42,7 +42,7 @@
 	];
 
 	/**
-	 * O menu do admin tem doze itens; sem agrupamento vira uma lista plana em que
+	 * O menu do admin tem catorze itens; sem agrupamento vira uma lista plana em que
 	 * o que se usa todo dia some no meio do cadastro. A separação é por frequência
 	 * de uso, não por entidade.
 	 */
@@ -73,6 +73,7 @@
 				{ href: resolve('/admin/colaboradores', {}), label: 'Colaboradores', icon: 'users' },
 				{ href: resolve('/admin/departamentos', {}), label: 'Departamentos', icon: 'handshake' },
 				{ href: resolve('/admin/jornadas', {}), label: 'Jornadas', icon: 'clock' },
+				{ href: resolve('/admin/escala', {}), label: 'Escala de folga', icon: 'calendar' },
 				{ href: resolve('/admin/ferias', {}), label: 'Férias', icon: 'vacations' },
 				{ href: resolve('/admin/feriados', {}), label: 'Feriados', icon: 'calendar' }
 			]
@@ -81,6 +82,7 @@
 			titulo: 'Relatórios e conformidade',
 			itens: [
 				{ href: resolve('/admin/relatorios', {}), label: 'Relatórios', icon: 'report' },
+				{ href: resolve('/admin/banco-horas', {}), label: 'Banco de horas', icon: 'history' },
 				{ href: resolve('/admin/auditoria', {}), label: 'Auditoria', icon: 'shield' }
 			]
 		}
@@ -340,6 +342,9 @@
 
 	.main {
 		flex: 1;
+		/* Sem isto o item flex cresce até o conteúdo mais largo (uma tabela) e a
+		   página inteira rola na horizontal; com 0, a tabela rola no próprio contêiner. */
+		min-width: 0;
 		margin-left: var(--sidebar-w);
 		min-height: 100vh;
 		display: flex;

@@ -126,9 +126,11 @@ export async function pendenciasDoPeriodo(
 			emitidoEm,
 			versoes: c.jornada?.versoes ?? [],
 			ausencias: ausenciasPorColaborador.get(c.id) ?? [],
-			// Feriado não muda o que interessa aqui: marcação ímpar é Incompleto em
-			// qualquer dia — o mesmo critério da contagem SQL de `contarDiasEmAberto`.
+			// Feriado e escala não mudam o que interessa aqui: marcação ímpar é
+			// Incompleto em qualquer dia — o mesmo critério da contagem SQL de
+			// `contarDiasEmAberto`.
 			feriados: new Map(),
+			escala: null,
 			marcacoes,
 			admissao: c.dataAdmissao,
 			desligamento: c.deletedAt

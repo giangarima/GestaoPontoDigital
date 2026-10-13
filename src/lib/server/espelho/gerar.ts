@@ -11,6 +11,7 @@ import { prisma } from '@/lib/server/db';
 import { finalizarPdf } from '@/lib/server/assinatura/pdf';
 import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
 import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
+import { escalaDoColaborador } from '@/lib/server/escala/carregar';
 import { ausenciaNoPeriodo, instantesDoPeriodo, type Dia } from '@/lib/server/periodo';
 import { montarEspelho, type EspelhoEntrada } from './montar';
 import { desenharEspelhoPdf } from './pdf';
@@ -36,7 +37,7 @@ export async function carregarEspelho(
 	});
 	if (!colaborador) return null;
 
-	const [registros, ausencias, feriados] = await Promise.all([
+	const [registros, ausencias, feriados, escala] = await Promise.all([
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(inicio, fim) },
 			orderBy: { marcadoEm: 'asc' },
@@ -45,7 +46,8 @@ export async function carregarEspelho(
 		prisma.ausencia.findMany({
 			where: { colaboradorId, empresaId, status: 'aprovada', ...ausenciaNoPeriodo(inicio, fim) }
 		}),
-		feriadosDoPeriodo(empresaId, inicio, fim)
+		feriadosDoPeriodo(empresaId, inicio, fim),
+		escalaDoColaborador(colaboradorId, inicio, fim)
 	]);
 
 	const { empresa, usuario } = colaborador;
@@ -66,6 +68,7 @@ export async function carregarEspelho(
 		fim,
 		emitidoEm,
 		versoes: colaborador.jornada?.versoes ?? [],
+		escala,
 		ausencias,
 		feriados: feriadosDoColaborador(feriados, colaboradorId),
 		marcacoes: registros

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/server/db';
 import { apurarPeriodo } from '@/lib/server/espelho/montar';
 import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
 import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
+import { escalasDosColaboradores } from '@/lib/server/escala/carregar';
 import { ausenciaNoPeriodo, diasDoMes, instantesDoPeriodo } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
@@ -46,7 +47,14 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		}
 	});
 
-	const feriados = await feriadosDoPeriodo(admin.empresaId, periodo.inicio, periodo.fim);
+	const [feriados, escalas] = await Promise.all([
+		feriadosDoPeriodo(admin.empresaId, periodo.inicio, periodo.fim),
+		escalasDosColaboradores(
+			colaboradores.map((c) => c.id),
+			periodo.inicio,
+			periodo.fim
+		)
+	]);
 
 	const byUser = new Map<string, typeof registros>();
 	for (const p of registros) {
@@ -66,6 +74,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			fim: periodo.fim,
 			emitidoEm: agora,
 			versoes: c.jornada?.versoes ?? [],
+			escala: escalas.get(c.id) ?? null,
 			ausencias: ausenciasColab.filter((a) => a.status === 'aprovada'),
 			feriados: feriadosDoColaborador(feriados, c.id),
 			marcacoes: byUser.get(c.id) ?? [],

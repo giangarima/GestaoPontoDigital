@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { ROTULO_TIPO } from '@/services/feriado.service';
+	import { bancoHorasService, type ExtratoBanco } from '@/services/banco-horas.service';
 	import { onMount } from 'svelte';
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { DailySummary, RegistroType } from '@/services/timesheet.service';
@@ -71,6 +72,16 @@
 	const totalDias = $derived(history.length);
 	const bancoMin = $derived(totalExtraMin - totalDeficitMin);
 
+	// Banco de horas de verdade (ciclo atual), quando a empresa usa banco.
+	let banco = $state<ExtratoBanco | null>(null);
+	const cicloBanco = $derived(banco && banco.regime !== 'nenhum' ? banco.ciclo : null);
+	const saldoExibido = $derived(cicloBanco ? cicloBanco.saldoMin : bancoMin);
+
+	function dataCurta(dia: string): string {
+		const [a, m, d] = dia.split('-');
+		return `${d}/${m}/${a}`;
+	}
+
 	function formatDayHeader(dateStr: string): string {
 		const d = new Date(`${dateStr}T12:00:00`);
 		return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
@@ -95,7 +106,13 @@
 		}
 	}
 
-	onMount(loadHistory);
+	onMount(() => {
+		loadHistory();
+		bancoHorasService
+			.meu()
+			.then((b) => (banco = b))
+			.catch(() => {});
+	});
 </script>
 
 <svelte:head>
@@ -134,13 +151,16 @@
 			<span class="summary__value">{totalDias}</span>
 		</Card>
 		<Card>
-			<span class="summary__label">Banco de horas</span>
+			<span class="summary__label">{cicloBanco ? 'Banco de horas' : 'Saldo do período'}</span>
 			<span
 				class="summary__value"
-				style="color: {bancoMin >= 0 ? 'var(--color-success)' : 'var(--color-danger)'}"
+				style="color: {saldoExibido >= 0 ? 'var(--color-success)' : 'var(--color-danger)'}"
 			>
-				{bancoMin >= 0 ? '+' : '-'}{formatHoursMinutes(Math.abs(bancoMin))}
+				{saldoExibido >= 0 ? '+' : '-'}{formatHoursMinutes(Math.abs(saldoExibido))}
 			</span>
+			{#if cicloBanco}
+				<span class="summary__nota">vence em {dataCurta(cicloBanco.fim)}</span>
+			{/if}
 		</Card>
 		<Card>
 			<span class="summary__label">Horas extras</span>
@@ -279,6 +299,13 @@
 		font-weight: 500;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	.summary__nota {
+		display: block;
+		font-size: 0.7rem;
+		color: var(--color-text-subtle);
+		margin-top: 0.15rem;
 	}
 
 	.summary__value {

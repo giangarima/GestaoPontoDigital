@@ -1,10 +1,10 @@
 <!--
   @page /admin/empresa
-  @description Dados da empresa (nome, CNPJ, horários).
+  @description Dados da empresa (nome, CNPJ, horários) e regime do banco de horas.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { empresaService, type Empresa } from '@/services/empresa.service';
+	import { empresaService, type Empresa, type RegimeBanco } from '@/services/empresa.service';
 	import { user as userStore } from '@/store/auth.store';
 	import { get } from 'svelte/store';
 	import Button from '@/components/ui/Button.svelte';
@@ -23,6 +23,34 @@
 		horaFechamento: ''
 	});
 
+	let banco = $state({
+		regime: 'nenhum' as RegimeBanco,
+		inicio: '',
+		negativo: 'zerar' as 'zerar' | 'descontar'
+	});
+	let salvandoBanco = $state(false);
+	let bancoMsg = $state('');
+
+	async function salvarBanco() {
+		if (!empresa) return;
+		salvandoBanco = true;
+		errorMsg = '';
+		bancoMsg = '';
+		try {
+			empresa = await empresaService.update(empresa.id, {
+				bancoHorasRegime: banco.regime,
+				bancoHorasInicio: banco.regime === 'nenhum' ? null : banco.inicio || null,
+				bancoHorasNegativo: banco.negativo
+			});
+			bancoMsg = 'Banco de horas salvo.';
+		} catch (e) {
+			const err = e as { details?: { error?: string } };
+			errorMsg = err.details?.error ?? 'Erro ao salvar o banco de horas.';
+		} finally {
+			salvandoBanco = false;
+		}
+	}
+
 	async function loadEmpresa() {
 		const user = get(userStore);
 		if (!user) return;
@@ -35,6 +63,11 @@
 			localPrestacao: empresa.localPrestacao ?? '',
 			horaAbertura: empresa.horaAbertura,
 			horaFechamento: empresa.horaFechamento
+		};
+		banco = {
+			regime: empresa.bancoHorasRegime,
+			inicio: empresa.bancoHorasInicio?.slice(0, 10) ?? '',
+			negativo: empresa.bancoHorasNegativo
 		};
 	}
 
@@ -85,6 +118,40 @@
 				{salvando ? 'Salvando…' : 'Salvar'}
 			</Button>
 		</div>
+
+		<div class="card">
+			<h2>Banco de horas</h2>
+			<p class="hint">
+				Extras viram crédito e atrasos viram débito (faltas ficam de fora). A folga compensatória
+				consome saldo. No fim de cada ciclo o saldo vence: o positivo é pago como hora extra.
+			</p>
+			<label
+				>Regime
+				<select bind:value={banco.regime}>
+					<option value="nenhum">Sem banco de horas</option>
+					<option value="mensal">Mensal — compensa no mesmo mês (CLT, art. 59, §6º)</option>
+					<option value="semestral">Semestral — acordo individual, até 6 meses (§5º)</option>
+					<option value="anual">Anual — convenção ou acordo coletivo, até 12 meses (§2º)</option>
+				</select>
+			</label>
+			{#if banco.regime !== 'nenhum'}
+				<label>Início do primeiro ciclo<input type="date" bind:value={banco.inicio} /></label>
+				<label
+					>Saldo negativo no vencimento
+					<select bind:value={banco.negativo}>
+						<option value="zerar">Zerar (a empresa assume as horas devidas)</option>
+						<option value="descontar">Descontar em folha</option>
+					</select>
+				</label>
+			{/if}
+			{#if bancoMsg}<p class="ok" role="status">{bancoMsg}</p>{/if}
+			<Button
+				disabled={salvandoBanco || (banco.regime !== 'nenhum' && !banco.inicio)}
+				onclick={salvarBanco}
+			>
+				{salvandoBanco ? 'Salvando…' : 'Salvar banco de horas'}
+			</Button>
+		</div>
 	</div>
 </section>
 
@@ -107,7 +174,8 @@
 		font-size: 0.875rem;
 		color: var(--color-text-muted);
 	}
-	input {
+	input,
+	select {
 		display: block;
 		width: 100%;
 		margin-top: 0.25rem;
@@ -122,6 +190,16 @@
 	}
 	.row label {
 		flex: 1;
+	}
+	.hint {
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
+		margin: 0 0 1rem;
+	}
+	.ok {
+		color: var(--color-success-strong);
+		font-size: 0.875rem;
+		margin: 0 0 0.75rem;
 	}
 	.error {
 		background: var(--color-danger-bg);

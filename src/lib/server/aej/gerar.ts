@@ -9,6 +9,7 @@ import { padNum, toD } from '@/lib/server/afd/format';
 import { ausenciaDateKeys } from '@/lib/server/timesheet';
 import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
 import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
+import { escalasDosColaboradores } from '@/lib/server/escala/carregar';
 import { ausenciaNoPeriodo } from '@/lib/server/periodo';
 import { montarLinhasAej } from './montar';
 
@@ -51,7 +52,14 @@ export async function gerarAej(
 		orderBy: { usuario: { nome: 'asc' } }
 	});
 
-	const feriados = await feriadosDoPeriodo(empresaId, toD(range.inicio), toD(range.fim));
+	const [feriados, escalas] = await Promise.all([
+		feriadosDoPeriodo(empresaId, toD(range.inicio), toD(range.fim)),
+		escalasDosColaboradores(
+			colaboradores.map((c) => c.id),
+			toD(range.inicio),
+			toD(range.fim)
+		)
+	]);
 
 	const linhas = montarLinhasAej({
 		empresa: {
@@ -68,6 +76,7 @@ export async function gerarAej(
 			admissao: c.dataAdmissao,
 			desligamento: c.deletedAt,
 			versoes: c.jornada?.versoes ?? [],
+			escala: escalas.get(c.id) ?? null,
 			diasAbonados: ausenciaDateKeys(c.ausencias),
 			feriados: feriadosDoColaborador(feriados, c.id),
 			marcacoes: c.registros

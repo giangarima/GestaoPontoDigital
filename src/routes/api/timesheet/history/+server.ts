@@ -2,7 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
 import { ausenciaNoPeriodo, ehDia, instantesDoPeriodo } from '@/lib/server/periodo';
-import { contratualPorDia, previstasPorDia } from '@/lib/server/jornada';
+import { contratualPorDia, previstasPorDia } from '@/lib/server/escala/calendario';
+import { escalaDoColaborador } from '@/lib/server/escala/carregar';
 import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
 import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
 import { requireUser, jsonError, jsonOk } from '../../_lib/auth-helpers';
@@ -32,7 +33,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 	const colaboradorId = user.colaboradorId;
 
-	const [registros, ausencias, colaborador, feriados] = await Promise.all([
+	const [registros, ausencias, colaborador, feriados, escala] = await Promise.all([
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(startDate, endDate) },
 			orderBy: { marcadoEm: 'asc' },
@@ -49,7 +50,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			where: { id: colaboradorId },
 			select: { jornada: { select: { versoes: true } } }
 		}),
-		feriadosDoPeriodo(user.empresaId, startDate, endDate)
+		feriadosDoPeriodo(user.empresaId, startDate, endDate),
+		escalaDoColaborador(colaboradorId, startDate, endDate)
 	]);
 
 	const datasAbonadas = ausenciaDateKeys(ausencias);
@@ -57,8 +59,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		buildDailySummaries(registros, {
 			datasAbonadas,
 			feriados: feriadosDoColaborador(feriados, colaboradorId),
-			contratualMin: contratualPorDia(colaborador?.jornada?.versoes),
-			previstas: previstasPorDia(colaborador?.jornada?.versoes)
+			contratualMin: contratualPorDia(colaborador?.jornada?.versoes, escala),
+			previstas: previstasPorDia(colaborador?.jornada?.versoes, escala)
 		})
 	);
 };

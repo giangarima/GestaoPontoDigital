@@ -1,4 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
+import { toEmpresaDTO } from '@/lib/server/empresa';
 import { prisma } from '@/lib/server/db';
 import { requireAdmin, jsonError, jsonOk } from '../_lib/auth-helpers';
 
@@ -16,7 +17,7 @@ export const GET: RequestHandler = async ({ request }) => {
 		orderBy: { nome: 'asc' }
 	});
 
-	return jsonOk(empresas);
+	return jsonOk(empresas.map(toEmpresaDTO));
 };
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -52,5 +53,5 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	});
 
-	return jsonOk(empresa, 201);
+	return jsonOk(toEmpresaDTO(empresa), 201);
 };

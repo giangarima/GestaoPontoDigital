@@ -1,7 +1,15 @@
 import type { RequestHandler } from '@sveltejs/kit';
+import { toEmpresaDTO } from '@/lib/server/empresa';
 import { prisma } from '@/lib/server/db';
 import { registrarEventoEmpregador } from '@/lib/server/registro-ledger';
 import { isValidCnpj } from '@/utils/validators';
+import {
+	DESTINOS_NEGATIVO,
+	REGIMES,
+	type DestinoNegativo,
+	type RegimeBanco
+} from '@/lib/server/banco-horas/montar';
+import { dataPura, ehDia } from '@/lib/server/periodo';
 import { requireAdmin, jsonError, jsonOk } from '../../_lib/auth-helpers';
 
 export const GET: RequestHandler = async ({ request, params }) => {
@@ -17,7 +25,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	const empresa = await prisma.empresa.findUnique({ where: { id: params.id } });
 	if (!empresa) return jsonError('Empresa não encontrada', 404);
 
-	return jsonOk(empresa);
+	return jsonOk(toEmpresaDTO(empresa));
 };
 
 export const PUT: RequestHandler = async ({ request, params }) => {
@@ -39,6 +47,9 @@ export const PUT: RequestHandler = async ({ request, params }) => {
 		localPrestacao: string;
 		horaAbertura: string;
 		horaFechamento: string;
+		bancoHorasRegime: string;
+		bancoHorasInicio: string | null;
+		bancoHorasNegativo: string;
 	}>;
 
 	try {
@@ -49,6 +60,26 @@ export const PUT: RequestHandler = async ({ request, params }) => {
 
 	if (body.cnpj != null && body.cnpj.trim() !== '' && !isValidCnpj(body.cnpj)) {
 		return jsonError('CNPJ inválido', 400, 'cnpj');
+	}
+
+	if (body.bancoHorasRegime != null && !REGIMES.includes(body.bancoHorasRegime as RegimeBanco)) {
+		return jsonError(`bancoHorasRegime deve ser ${REGIMES.join(', ')}`, 400, 'bancoHorasRegime');
+	}
+	if (
+		body.bancoHorasNegativo != null &&
+		!DESTINOS_NEGATIVO.includes(body.bancoHorasNegativo as DestinoNegativo)
+	) {
+		return jsonError('bancoHorasNegativo deve ser zerar ou descontar', 400, 'bancoHorasNegativo');
+	}
+	if (body.bancoHorasInicio != null && !ehDia(body.bancoHorasInicio)) {
+		return jsonError('bancoHorasInicio deve ser uma data AAAA-MM-dd', 400, 'bancoHorasInicio');
+	}
+	if (
+		body.bancoHorasRegime &&
+		body.bancoHorasRegime !== 'nenhum' &&
+		body.bancoHorasInicio === null
+	) {
+		return jsonError('Informe o início do banco de horas', 400, 'bancoHorasInicio');
 	}
 
 	const atual = await prisma.empresa.findUnique({ where: { id: empresaId } });
@@ -64,7 +95,15 @@ export const PUT: RequestHandler = async ({ request, params }) => {
 				caepfCno: body.caepfCno ?? undefined,
 				localPrestacao: body.localPrestacao ?? undefined,
 				horaAbertura: body.horaAbertura ?? undefined,
-				horaFechamento: body.horaFechamento ?? undefined
+				horaFechamento: body.horaFechamento ?? undefined,
+				bancoHorasRegime: body.bancoHorasRegime ?? undefined,
+				bancoHorasInicio:
+					body.bancoHorasInicio === undefined
+						? undefined
+						: body.bancoHorasInicio === null
+							? null
+							: dataPura(body.bancoHorasInicio),
+				bancoHorasNegativo: body.bancoHorasNegativo ?? undefined
 			}
 		});
 
@@ -91,5 +130,5 @@ export const PUT: RequestHandler = async ({ request, params }) => {
 		return atualizada;
 	});
 
-	return jsonOk(empresa);
+	return jsonOk(toEmpresaDTO(empresa));
 };

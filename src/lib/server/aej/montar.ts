@@ -42,8 +42,8 @@ import {
 	REP_DEV_INSCRICAO_TIPO,
 	REP_INPI
 } from '@/lib/server/afd/config';
+import { horarioDoDia, type EscalaColaborador } from '@/lib/server/escala/calendario';
 import {
-	horarioContratualDoDia,
 	type DiaSemanaKey,
 	type HorarioContratual,
 	type VersaoVigencia
@@ -75,6 +75,8 @@ export interface VinculoAej {
 	desligamento: Date | null;
 	/** Versões da jornada do colaborador (vazio = sem jornada). */
 	versoes: VersaoVigencia[];
+	/** Escala de folga (`null` = padrão semanal da jornada). */
+	escala: EscalaColaborador | null;
 	/** Datas (AAAA-MM-dd) cobertas por ausência aprovada (férias, atestado, folga…). */
 	diasAbonados: Set<string>;
 	/** Feriados do período do ponto de vista deste vínculo (escalado ou não). */
@@ -184,7 +186,7 @@ export function montarLinhasAej(e: AejEntrada): string[] {
 			const feriado = v.feriados.get(dia);
 			const semExpediente = feriado !== undefined && !feriado.escalado;
 			const horario =
-				vigente(dia) && !semExpediente ? horarioContratualDoDia(v.versoes, dia) : null;
+				vigente(dia) && !semExpediente ? horarioDoDia(v.versoes, v.escala, dia) : null;
 			const doDia = porDia.get(dia) ?? [];
 
 			let validas = 0;

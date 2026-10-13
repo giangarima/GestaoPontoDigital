@@ -48,6 +48,7 @@ function colaborador(extra: Partial<ColaboradorPainel> = {}): ColaboradorPainel 
 		nome: 'Fulano de Tal',
 		departamento: 'Loja',
 		versoes: VERSOES,
+		escala: null,
 		marcacoes: [],
 		ausencia: null,
 		feriado: null,

@@ -173,11 +173,14 @@ export interface HorarioContratual {
  */
 export function horarioContratualDoDia(
 	versoes: VersaoVigencia[],
-	dia: string
+	dia: string,
+	opcoes: { ignorarAtivo?: boolean } = {}
 ): HorarioContratual | null {
 	const data = new Date(`${dia}T00:00:00Z`);
 	const cfg = versaoVigenteEm(versoes, data)?.[DIAS_KEY[data.getUTCDay()]];
-	if (!cfg?.ativo || !cfg.entrada || !cfg.saida) return null;
+	// `ignorarAtivo`: com escala de folga, quem decide se o dia é de trabalho é o
+	// ciclo; a jornada só empresta o horário daquele dia da semana.
+	if (!cfg || (!cfg.ativo && !opcoes.ignorarAtivo) || !cfg.entrada || !cfg.saida) return null;
 
 	const pares: [string, string][] =
 		cfg.saida_almoco && cfg.retorno_almoco
@@ -208,29 +211,4 @@ export function marcacoesPrevistas(dia: string, pares: [string, string][]): Date
 		anterior = minutos;
 		return new Date(base + minutos * 60_000);
 	});
-}
-
-/**
- * Marcações previstas por dia para a apuração; `null` quando não há horário
- * (folga, DSR ou colaborador sem jornada).
- */
-export function previstasPorDia(
-	versoes: VersaoVigencia[] | null | undefined
-): (dia: string) => Date[] | null {
-	if (!versoes?.length) return () => null;
-	return (dia) => {
-		const h = horarioContratualDoDia(versoes, dia);
-		return h ? marcacoesPrevistas(dia, h.pares) : null;
-	};
-}
-
-/**
- * Minutos contratuais por dia para a apuração: 0 em folga/DSR; `null` quando o
- * colaborador não tem jornada (não há contrato para medir extras/déficit).
- */
-export function contratualPorDia(
-	versoes: VersaoVigencia[] | null | undefined
-): (dia: string) => number | null {
-	if (!versoes?.length) return () => null;
-	return (dia) => horarioContratualDoDia(versoes, dia)?.minutos ?? 0;
 }

@@ -14,6 +14,10 @@ export interface Empresa {
 	localPrestacao: string | null;
 	horaAbertura: string;
 	horaFechamento: string;
+	bancoHorasRegime: RegimeBanco;
+	/** ISO (data pura à meia-noite UTC) ou null. */
+	bancoHorasInicio: string | null;
+	bancoHorasNegativo: 'zerar' | 'descontar';
 	createdAt: string;
 	updatedAt: string;
 }
@@ -26,7 +30,13 @@ export interface EmpresaInput {
 	localPrestacao?: string;
 	horaAbertura: string;
 	horaFechamento: string;
+	bancoHorasRegime?: RegimeBanco;
+	/** AAAA-MM-dd. */
+	bancoHorasInicio?: string | null;
+	bancoHorasNegativo?: 'zerar' | 'descontar';
 }
+
+export type RegimeBanco = 'nenhum' | 'mensal' | 'semestral' | 'anual';
 
 export const empresaService = {
 	list: () => get<Empresa[]>('/empresas'),

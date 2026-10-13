@@ -66,6 +66,7 @@ export function entradaExemplo(nome = 'José da Conceição'): EspelhoEntrada {
 		],
 		ausencias: [],
 		feriados: new Map(),
+		escala: null,
 		marcacoes
 	};
 }

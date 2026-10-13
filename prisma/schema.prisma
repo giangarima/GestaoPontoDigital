@@ -9,23 +9,30 @@ datasource db {
 }
 
 model Empresa {
-  id             String   @id @default(cuid())
-  nome           String
-  cnpj           String?  @unique
+  id                 String    @id @default(cuid())
+  nome               String
+  cnpj               String?   @unique
   // Dados cadastrais do empregador para o AFD (Portaria 671/2021).
-  razaoSocial    String?  @map("razao_social")
-  caepfCno       String?  @map("caepf_cno") // CAEPF ou CNO, quando existir
-  localPrestacao String?  @map("local_prestacao") // local de prestação de serviços (tipo 2)
+  razaoSocial        String?   @map("razao_social")
+  caepfCno           String?   @map("caepf_cno") // CAEPF ou CNO, quando existir
+  localPrestacao     String?   @map("local_prestacao") // local de prestação de serviços (tipo 2)
   // Contador da sequência de NSR do REP (por empresa/estabelecimento). Incrementado
   // atomicamente a cada evento (batida tipo 7, empregador tipo 2, empregado tipo 5).
-  ultimoNsr      BigInt   @default(0) @map("ultimo_nsr")
+  ultimoNsr          BigInt    @default(0) @map("ultimo_nsr")
   // Setting da empresa; `<input type="time">` no admin já garante o formato "HH:MM".
   // Mantido como String de propósito: `@db.Time` viraria Date (data fantasma) e
   // exigiria conversão frágil com timezone para um campo de baixo risco.
-  horaAbertura   String   @map("hora_abertura") // "08:00"
-  horaFechamento String   @map("hora_fechamento") // "18:00"
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  horaAbertura       String    @map("hora_abertura") // "08:00"
+  horaFechamento     String    @map("hora_fechamento") // "18:00"
+  // Banco de horas (art. 59 da CLT). Regime: "nenhum" | "mensal" (§6º, compensa no
+  // mês) | "semestral" (§5º, acordo individual) | "anual" (§2º, convenção coletiva).
+  // Os ciclos contam a partir de `bancoHorasInicio`; no vencimento o saldo positivo
+  // é pago como extra e o negativo é zerado ou descontado (`bancoHorasNegativo`).
+  bancoHorasRegime   String    @default("nenhum") @map("banco_horas_regime")
+  bancoHorasInicio   DateTime? @map("banco_horas_inicio") @db.Date
+  bancoHorasNegativo String    @default("zerar") @map("banco_horas_negativo") // "zerar" | "descontar"
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   usuarios          Usuario[]
   colaboradores     Colaborador[]
@@ -66,6 +73,7 @@ model Usuario {
   registrosCriados   Registro[]         @relation("registroCriadoPor")
   anulacoes          RegistroAnulacao[] @relation("anulacaoAnuladoPor")
   ausenciasRevisadas Ausencia[]         @relation("ausenciaRevisadoPor")
+  ajustesEscala      EscalaAjuste[]     @relation("escalaAjusteCriadoPor")
 
   @@unique([empresaId, email])
   @@unique([empresaId, cpf])
@@ -93,6 +101,8 @@ model Colaborador {
   registros      Registro[]
   ausencias      Ausencia[]
   escalasFeriado FeriadoEscala[]
+  escalaCiclos   EscalaCiclo[]
+  escalaAjustes  EscalaAjuste[]
   // Soft delete — Portaria 671/2021: demitir um colaborador não pode apagar o
   // histórico de ponto. Registros das leituras "ativas" filtram `deletedAt: null`;
   // relatórios legais (espelho) ainda alcançam demitidos.
@@ -354,4 +364,37 @@ model FeriadoEscala {
   @@id([feriadoId, colaboradorId])
   @@index([colaboradorId])
   @@map("feriado_escalas")
+}
+
+// Escala de folga — ciclo de trabalho/folga do colaborador (ver
+// `src/lib/server/escala/calendario.ts`). `sequencia` é "T"/"F" por dia a partir
+// da vigência ("TTTTTTF" = 6x1, "TF" = 12x36); null volta ao padrão semanal da
+// jornada. Versionado por vigência, como a jornada: mudar a escala não reescreve
+// o histórico.
+model EscalaCiclo {
+  id             String      @id @default(cuid())
+  colaboradorId  String      @map("colaborador_id")
+  colaborador    Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  vigenciaInicio DateTime    @map("vigencia_inicio") @db.Date
+  sequencia      String?
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([colaboradorId, vigenciaInicio])
+  @@map("escala_ciclos")
+}
+
+// Exceção pontual da escala num dia: trabalha (true) ou folga (false). Trocar a
+// folga de terça para quinta são dois ajustes.
+model EscalaAjuste {
+  colaboradorId String      @map("colaborador_id")
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  data          DateTime    @db.Date
+  trabalha      Boolean
+  motivo        String?
+  criadoPor     String      @map("criado_por") // Usuario.id do admin
+  criadoPorRef  Usuario     @relation("escalaAjusteCriadoPor", fields: [criadoPor], references: [id], onDelete: Restrict)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([colaboradorId, data])
+  @@map("escala_ajustes")
 }

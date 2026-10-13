@@ -5,12 +5,14 @@
  * `espelho/montar.ts` × `espelho/gerar.ts`.
  *
  * O painel é consultado de novo a cada atualização automática, então o custo por
- * requisição importa: são seis consultas em paralelo, uma passada em memória e
- * nenhuma varredura do mês inteiro de marcações.
+ * requisição importa: sete consultas em paralelo, mais as duas da escala de folga
+ * (que dependem dos ids dos colaboradores), uma passada em memória e nenhuma
+ * varredura do mês inteiro de marcações.
  */
 import { prisma } from '@/lib/server/db';
 import { STATUS_APROVADA } from '@/lib/server/ausencia';
-import { horarioContratualDoDia } from '@/lib/server/jornada';
+import { horarioDoDia, type EscalaColaborador } from '@/lib/server/escala/calendario';
+import { escalasDosColaboradores } from '@/lib/server/escala/carregar';
 import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
 import type { Feriados, TipoFeriado } from '@/lib/server/feriado/calendario';
 import { contarDiasEmAberto } from '@/lib/server/pendencias';
@@ -99,6 +101,7 @@ function noVinculo(c: ColaboradorCarregado, dia: Dia): boolean {
  */
 function vizinhoComEscala(
 	colaboradores: ColaboradorCarregado[],
+	escalas: Map<string, EscalaColaborador>,
 	feriados: Feriados,
 	dia: Dia,
 	passo: 1 | -1
@@ -110,7 +113,7 @@ function vizinhoComEscala(
 			(c) =>
 				noVinculo(c, candidato) &&
 				(!feriado || feriado.escalados.has(c.id)) &&
-				horarioContratualDoDia(c.jornada?.versoes ?? [], candidato) !== null
+				horarioDoDia(c.jornada?.versoes ?? [], escalas.get(c.id) ?? null, candidato) !== null
 		);
 		if (temEscala) return candidato;
 	}
@@ -184,6 +187,13 @@ export async function carregarPainelDia(
 		)
 	]);
 	const feriadoDoDia = feriados.get(dia) ?? null;
+	// A escala também cobre o alcance da navegação: a folga de escala muda quem
+	// tem expediente nos dias vizinhos.
+	const escalas = await escalasDosColaboradores(
+		colaboradores.map((c) => c.id),
+		deslocar(dia, -ALCANCE_NAVEGACAO_DIAS),
+		deslocar(dia, ALCANCE_NAVEGACAO_DIAS)
+	);
 
 	const marcacoesPorColaborador = new Map<string, Date[]>();
 	for (const r of registros) {
@@ -213,6 +223,7 @@ export async function carregarPainelDia(
 				nome: c.usuario.nome,
 				departamento: c.departamento?.nome ?? null,
 				versoes: c.jornada?.versoes ?? [],
+				escala: escalas.get(c.id) ?? null,
 				marcacoes: marcacoesPorColaborador.get(c.id) ?? [],
 				ausencia: ausenciaPorColaborador.get(c.id) ?? null,
 				feriado: feriadoDoDia
@@ -256,8 +267,8 @@ export async function carregarPainelDia(
 		semEscala,
 		navegacao: semEscala
 			? {
-					anterior: vizinhoComEscala(colaboradores, feriados, dia, -1),
-					proximo: vizinhoComEscala(colaboradores, feriados, dia, 1)
+					anterior: vizinhoComEscala(colaboradores, escalas, feriados, dia, -1),
+					proximo: vizinhoComEscala(colaboradores, escalas, feriados, dia, 1)
 				}
 			: null
 	};

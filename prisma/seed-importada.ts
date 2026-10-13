@@ -181,7 +181,11 @@ export async function seedEmpresaImportada(
 			razaoSocial: 'EMPRESA 1 COMERCIO LTDA',
 			localPrestacao: 'Matriz',
 			horaAbertura: '08:00',
-			horaFechamento: '19:00'
+			horaFechamento: '19:00',
+			// Banco de horas semestral (acordo individual, art. 59, §5º) desde o início
+			// dos dados: o primeiro ciclo (mar–ago) já venceu e o segundo está aberto.
+			bancoHorasRegime: 'semestral',
+			bancoHorasInicio: dataPura('2026-03-01')
 		}
 	});
 

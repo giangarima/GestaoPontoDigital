@@ -62,6 +62,7 @@ function entrada(): AejEntrada {
 				admissao: new Date('2025-01-01T00:00:00Z'),
 				desligamento: null,
 				versoes: COMERCIAL,
+				escala: null,
 				diasAbonados: new Set(['2026-01-07']), // atestado na quarta
 				feriados: new Map(),
 				marcacoes: [
@@ -94,6 +95,7 @@ function entrada(): AejEntrada {
 				admissao: new Date('2025-01-01T00:00:00Z'),
 				desligamento: brt('2026-01-06T18:00'), // desligada na terça
 				versoes: MEIO_PERIODO,
+				escala: null,
 				diasAbonados: new Set(),
 				feriados: new Map(),
 				marcacoes: [original('2026-01-05T08:00')]

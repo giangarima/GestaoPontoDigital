@@ -57,6 +57,7 @@ function entrada(extra: Partial<EspelhoEntrada> = {}): EspelhoEntrada {
 		],
 		ausencias: [],
 		feriados: new Map(),
+		escala: null,
 		marcacoes: [],
 		...extra
 	};
@@ -424,5 +425,31 @@ describe('feriados', () => {
 	it('feriado em dia de folga continua feriado no rótulo', () => {
 		const esp = montarEspelho(entrada({ feriados: new Map([['2026-01-04', feriado('X')]]) }));
 		expect(diaDe(esp, '2026-01-04').ocorrencia).toBe('Feriado (X)');
+	});
+});
+
+describe('escala de folga', () => {
+	it('folga do ciclo num dia útil não vira falta; trabalho no sábado de escala sim', () => {
+		// Ciclo de 7 dias começando no domingo 04/01: dois dias de folga e cinco de trabalho.
+		const esp = montarEspelho(
+			entrada({
+				escala: {
+					ciclos: [{ vigenciaInicio: new Date('2026-01-04T00:00:00Z'), sequencia: 'FFTTTTT' }],
+					ajustes: new Map()
+				}
+			})
+		);
+		// Dom 04 e seg 05 de folga pela escala; ter a sáb de trabalho.
+		expect(esp.dias.map((d) => [d.dia, d.ocorrencia, d.falta])).toEqual([
+			['2026-01-04', 'DSR', false],
+			['2026-01-05', 'Folga', false],
+			['2026-01-06', 'Falta', true],
+			['2026-01-07', 'Falta', true],
+			['2026-01-08', 'Falta', true],
+			['2026-01-09', 'Falta', true],
+			// Sábado: a jornada não tem horário no sábado → sem expediente, mesmo com o ciclo mandando.
+			['2026-01-10', 'Folga', false]
+		]);
+		expect(esp.dias.find((d) => d.dia === '2026-01-05')?.contratualMin).toBe(0);
 	});
 });

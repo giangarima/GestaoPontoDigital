@@ -27,11 +27,8 @@
  * PURO (sem Prisma) — ver `gerar.ts` para a carga do banco.
  */
 import { apurarDia } from '@/lib/server/apuracao';
-import {
-	horarioContratualDoDia,
-	marcacoesPrevistas,
-	type VersaoVigencia
-} from '@/lib/server/jornada';
+import { horarioDoDia, type EscalaColaborador } from '@/lib/server/escala/calendario';
+import { marcacoesPrevistas, type VersaoVigencia } from '@/lib/server/jornada';
 import {
 	rotuloFeriado,
 	type FeriadoDoDia,
@@ -74,6 +71,8 @@ export interface ApuracaoEntrada {
 	/** Momento da apuração: dias a partir de hoje estão em andamento. */
 	emitidoEm: Date;
 	versoes: VersaoVigencia[];
+	/** Escala de folga do colaborador (`null` = padrão semanal da jornada). */
+	escala: EscalaColaborador | null;
 	/** Só as aprovadas. */
 	ausencias: AusenciaEspelho[];
 	/**
@@ -124,6 +123,10 @@ export interface DiaEspelho {
 	ocorrencia: string;
 	/** Feriado ou ponto facultativo do dia, se houver. */
 	feriado: FeriadoDoDia | null;
+	/** Minutos contratuais do dia: 0 = sem expediente; null = sem jornada ou fora do vínculo. */
+	contratualMin: number | null;
+	/** Tipo da ausência aprovada do dia (ferias, atestado, folga…), se houver. */
+	ausenciaTipo: string | null;
 	falta: boolean;
 	/** Minutos de variação absorvidos pela tolerância do art. 58, §1º da CLT. */
 	toleranciaMin: number;
@@ -226,12 +229,10 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 	const noVinculo = (dia: Dia) =>
 		(!admissao || dia >= admissao) && (!desligamento || dia <= desligamento);
 
-	// Ausência aprovada por dia → rótulo da ocorrência.
-	const ausenciaDoDia = new Map<Dia, string>();
+	// Ausência aprovada por dia → tipo (o rótulo da ocorrência sai dele).
+	const tipoAusenciaDoDia = new Map<Dia, string>();
 	for (const a of e.ausencias) {
-		for (const dia of ausenciaDateKeys([a])) {
-			ausenciaDoDia.set(dia, ROTULO_AUSENCIA[a.tipo] ?? 'Ausência justificada');
-		}
+		for (const dia of ausenciaDateKeys([a])) tipoAusenciaDoDia.set(dia, a.tipo);
 	}
 
 	const marcacoes = e.marcacoes
@@ -246,7 +247,7 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 	// Horários contratuais distintos do período → H1, H2…
 	const horarios = new Map<string, HorarioEspelho>();
 	const horarioDo = (dia: Dia): HorarioEspelho | null => {
-		const h = horarioContratualDoDia(e.versoes, dia);
+		const h = horarioDoDia(e.versoes, e.escala, dia);
 		if (!h) return null;
 		const chave = h.pares.map((p) => p.join('-')).join('/');
 		let item = horarios.get(chave);
@@ -276,7 +277,9 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 		const horario = vinculado && !(feriado && !feriado.escalado) ? horarioDo(dia) : null;
 		// 0 = sem expediente (folga/DSR/feriado); null = sem jornada ou fora do vínculo.
 		const contratual = semJornada || !vinculado ? null : (horario?.minutos ?? 0);
-		const ausencia = ausenciaDoDia.get(dia);
+		const ausenciaTipo = tipoAusenciaDoDia.get(dia) ?? null;
+		const ausencia =
+			ausenciaTipo === null ? undefined : (ROTULO_AUSENCIA[ausenciaTipo] ?? 'Ausência justificada');
 		const previstas = horario ? marcacoesPrevistas(dia, horario.pares) : undefined;
 		const apuracao = apurarDia(validas, contratual, ausencia !== undefined, previstas);
 
@@ -309,6 +312,8 @@ export function apurarPeriodo(e: ApuracaoEntrada, opcoes: OpcoesEspelho = {}): A
 			deficitMin: falta ? contratual : emAndamento ? 0 : apuracao.deficitMin,
 			ocorrencia,
 			feriado,
+			contratualMin: contratual,
+			ausenciaTipo,
 			falta,
 			toleranciaMin: apuracao.toleranciaMin
 		};

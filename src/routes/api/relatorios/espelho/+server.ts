@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { buildDailySummaries, ausenciaDateKeys } from '@/lib/server/timesheet';
-import { contratualPorDia, previstasPorDia } from '@/lib/server/jornada';
+import { contratualPorDia, previstasPorDia } from '@/lib/server/escala/calendario';
 import { ehDia } from '@/lib/server/periodo';
 import { carregarEspelho } from '@/lib/server/espelho/gerar';
 import { montarEspelho, type TotaisEspelho } from '@/lib/server/espelho/montar';
@@ -43,8 +43,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	const opcoes = {
 		datasAbonadas: ausenciaDateKeys(entrada.ausencias),
 		feriados: entrada.feriados,
-		contratualMin: contratualPorDia(entrada.versoes),
-		previstas: previstasPorDia(entrada.versoes)
+		contratualMin: contratualPorDia(entrada.versoes, entrada.escala),
+		previstas: previstasPorDia(entrada.versoes, entrada.escala)
 	};
 	const diasEfetivos = buildDailySummaries(registros, opcoes);
 	const diasOriginais = buildDailySummaries(registros, {

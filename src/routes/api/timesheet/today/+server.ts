@@ -2,7 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { prisma } from '@/lib/server/db';
 import { buildSummary } from '@/lib/server/timesheet';
 import { ausenciaNoPeriodo, diaDe, instantesDoPeriodo } from '@/lib/server/periodo';
-import { contratualPorDia, previstasPorDia } from '@/lib/server/jornada';
+import { contratualPorDia, previstasPorDia } from '@/lib/server/escala/calendario';
+import { escalaDoColaborador } from '@/lib/server/escala/carregar';
 import { feriadosDoColaborador } from '@/lib/server/feriado/calendario';
 import { feriadosDoPeriodo } from '@/lib/server/feriado/carregar';
 import { requireUser, jsonOk } from '../../_lib/auth-helpers';
@@ -22,7 +23,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 	const colaboradorId = user.colaboradorId;
 
-	const [registros, ausencias, colaborador, feriados] = await Promise.all([
+	const [registros, ausencias, colaborador, feriados, escala] = await Promise.all([
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(hoje, hoje) },
 			orderBy: { marcadoEm: 'asc' },
@@ -36,7 +37,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			where: { id: colaboradorId },
 			select: { jornada: { select: { versoes: true } } }
 		}),
-		feriadosDoPeriodo(user.empresaId, hoje, hoje)
+		feriadosDoPeriodo(user.empresaId, hoje, hoje),
+		escalaDoColaborador(colaboradorId, hoje, hoje)
 	]);
 
 	return jsonOk(
@@ -44,8 +46,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			hoje,
 			datasAbonadas: ausencias.length > 0 ? new Set([hoje]) : new Set(),
 			feriados: feriadosDoColaborador(feriados, colaboradorId),
-			contratualMin: contratualPorDia(colaborador?.jornada?.versoes),
-			previstas: previstasPorDia(colaborador?.jornada?.versoes)
+			contratualMin: contratualPorDia(colaborador?.jornada?.versoes, escala),
+			previstas: previstasPorDia(colaborador?.jornada?.versoes, escala)
 		})
 	);
 };
