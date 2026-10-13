@@ -10,6 +10,8 @@ export interface Justificativa {
 	colaboradorId: string;
 	colaboradorNome: string;
 	data: string;
+	/** Último dia (data pura, meia-noite UTC). Igual a `data` em justificativa de um dia. */
+	dataFim: string;
 	motivo: string;
 	anexoUrl: string | null;
 	status: 'pending' | 'approved' | 'rejected';

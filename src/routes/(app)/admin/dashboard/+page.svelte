@@ -547,7 +547,7 @@
 							: ''} aguardando aprovação"
 						detalhe="Enviadas pelos colaboradores"
 						acaoRotulo="Revisar"
-						href={resolve('/admin/justificativas', {})}
+						href={`${resolve('/admin/justificativas', {})}?status=pending`}
 					/>
 				{/if}
 

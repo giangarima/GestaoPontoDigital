@@ -44,8 +44,11 @@ export function toJustificativaDTO(a: Ausencia, colaboradorNome: string) {
 		id: a.id,
 		colaboradorId: a.colaboradorId,
 		colaboradorNome,
-		// Justificativa expõe uma data única (dataInicio == dataFim no lançamento atual).
+		// `data` é o início (contrato antigo). Lançamento manual tem dataInicio == dataFim,
+		// mas atestado de vários dias (seed) não — `dataFim` permite filtrar
+		// por período pela sobreposição.
 		data: a.dataInicio.toISOString(),
+		dataFim: a.dataFim.toISOString(),
 		motivo: a.motivo,
 		anexoUrl: a.anexoUrl,
 		status: statusToDto(a.status),

@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { justificativaService, type Justificativa } from '@/services/justificativa.service';
 	import { colaboradorService } from '@/services/colaborador.service';
 	import type { Colaborador } from '@/types/colaborador';
@@ -16,9 +17,64 @@
 
 	let lista = $state<Justificativa[]>([]);
 
+	// Filtros combináveis: status × período. `?status=pending` vem do "Revisar" do painel.
+	type FiltroStatus = 'todas' | Justificativa['status'];
+	const STATUS_VALIDOS: FiltroStatus[] = ['todas', 'pending', 'approved', 'rejected'];
+	const statusDaUrl = page.url.searchParams.get('status') as FiltroStatus | null;
+	let filtroStatus = $state<FiltroStatus>(
+		statusDaUrl && STATUS_VALIDOS.includes(statusDaUrl) ? statusDaUrl : 'todas'
+	);
+	let periodoDe = $state('');
+	let periodoAte = $state('');
+
+	// Datas puras (meia-noite UTC): comparar o AAAA-MM-DD como texto, sem fuso.
+	// Justificativa de vários dias entra se tocar o período em qualquer dia.
+	function noPeriodo(j: Justificativa): boolean {
+		const inicio = j.data.slice(0, 10);
+		const fim = (j.dataFim ?? j.data).slice(0, 10);
+		if (periodoDe && fim < periodoDe) return false;
+		if (periodoAte && inicio > periodoAte) return false;
+		return true;
+	}
+
+	const doPeriodo = $derived(lista.filter(noPeriodo));
+	const filtradas = $derived(
+		filtroStatus === 'todas' ? doPeriodo : doPeriodo.filter((j) => j.status === filtroStatus)
+	);
+	// Contagem de cada status já respeita o período, para o chip dizer o que vai mostrar.
+	const chipsStatus = $derived(
+		(
+			[
+				['todas', 'Todas'],
+				['pending', 'Pendentes'],
+				['approved', 'Aprovadas'],
+				['rejected', 'Rejeitadas']
+			] as const
+		).map(([id, rotulo]) => ({
+			id,
+			rotulo,
+			n: id === 'todas' ? doPeriodo.length : doPeriodo.filter((j) => j.status === id).length
+		}))
+	);
+	const periodoInvalido = $derived(!!periodoDe && !!periodoAte && periodoDe > periodoAte);
+	const filtrando = $derived(filtroStatus !== 'todas' || !!periodoDe || !!periodoAte);
+
+	function limparFiltros() {
+		filtroStatus = 'todas';
+		periodoDe = '';
+		periodoAte = '';
+	}
+
 	const POR_PAGINA = 20;
 	let pagina = $state(1);
-	const visiveis = $derived(lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA));
+	// Mudou o recorte, volta para a primeira página.
+	$effect(() => {
+		void filtroStatus;
+		void periodoDe;
+		void periodoAte;
+		pagina = 1;
+	});
+	const visiveis = $derived(filtradas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA));
 	let colaboradores = $state<Colaborador[]>([]);
 	let errorMsg = $state('');
 	let openId = $state<string | null>(null);
@@ -142,16 +198,27 @@
 		previewUrl = null;
 	}
 
+	// Data pura gravada à meia-noite UTC: formatar em UTC, senão Brasília mostra o dia anterior.
 	function fmtCurta(iso: string): string {
-		return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+		return new Date(iso).toLocaleDateString('pt-BR', {
+			day: '2-digit',
+			month: 'short',
+			timeZone: 'UTC'
+		});
 	}
 
 	function fmtLonga(iso: string): string {
 		return new Date(iso).toLocaleDateString('pt-BR', {
 			weekday: 'long',
 			day: '2-digit',
-			month: 'long'
+			month: 'long',
+			timeZone: 'UTC'
 		});
+	}
+
+	function fmtPeriodo(j: Justificativa): string {
+		if (!j.dataFim || j.dataFim.slice(0, 10) === j.data.slice(0, 10)) return fmtCurta(j.data);
+		return `${fmtCurta(j.data)} – ${fmtCurta(j.dataFim)}`;
 	}
 
 	function statusLabel(status: Justificativa['status']): string {
@@ -234,11 +301,53 @@
 		</div>
 	{/if}
 
-	<div class="section-label">Cadastradas ({lista.length})</div>
+	<div class="filtros" role="search" aria-label="Filtrar justificativas">
+		<div class="chips" role="group" aria-label="Filtrar por status">
+			{#each chipsStatus as c (c.id)}
+				<button
+					type="button"
+					class="chip"
+					class:chip--ativo={filtroStatus === c.id}
+					aria-pressed={filtroStatus === c.id}
+					onclick={() => (filtroStatus = c.id)}
+				>
+					{c.rotulo}
+					<span class="chip__n">{c.n}</span>
+				</button>
+			{/each}
+		</div>
+		<div class="periodo">
+			<label class="periodo__campo">
+				<span>De</span>
+				<input type="date" bind:value={periodoDe} max={periodoAte || undefined} />
+			</label>
+			<label class="periodo__campo">
+				<span>Até</span>
+				<input type="date" bind:value={periodoAte} min={periodoDe || undefined} />
+			</label>
+			{#if filtrando}
+				<button type="button" class="limpar" onclick={limparFiltros}>Limpar filtros</button>
+			{/if}
+		</div>
+	</div>
+
+	{#if periodoInvalido}
+		<div class="error">A data inicial é posterior à final.</div>
+	{/if}
+
+	<div class="section-label">
+		{filtrando
+			? `Encontradas (${filtradas.length} de ${lista.length})`
+			: `Cadastradas (${lista.length})`}
+	</div>
 
 	{#if lista.length === 0}
 		<Card>
 			<p class="muted">Nenhuma justificativa cadastrada.</p>
+		</Card>
+	{:else if filtradas.length === 0}
+		<Card>
+			<p class="muted">Nenhuma justificativa neste filtro.</p>
 		</Card>
 	{:else}
 		<div class="list">
@@ -247,7 +356,7 @@
 				<ApprovalCard
 					nome={j.colaboradorNome}
 					titulo="Justificativa de falta"
-					dataLabel={fmtCurta(j.data)}
+					dataLabel={fmtPeriodo(j)}
 					badgeLabel={statusLabel(j.status)}
 					badgeVariant={statusVariant(j.status)}
 					expanded={isOpen}
@@ -256,7 +365,10 @@
 					{#snippet details()}
 						<div class="row">
 							<span class="row__label">Data</span>
-							<span class="row__val">{fmtLonga(j.data)}</span>
+							<span class="row__val">
+								{fmtLonga(j.data)}{#if j.dataFim && j.dataFim.slice(0, 10) !== j.data.slice(0, 10)}
+									a {fmtLonga(j.dataFim)}{/if}
+							</span>
 						</div>
 						<div class="row column">
 							<span class="row__label">Motivo</span>
@@ -290,7 +402,12 @@
 			{/each}
 		</div>
 
-		<Paginacao bind:pagina total={lista.length} porPagina={POR_PAGINA} rotulo="justificativas" />
+		<Paginacao
+			bind:pagina
+			total={filtradas.length}
+			porPagina={POR_PAGINA}
+			rotulo="justificativas"
+		/>
 	{/if}
 </section>
 
@@ -367,6 +484,87 @@
 	.hint-success {
 		color: var(--color-success);
 		font-weight: 500;
+	}
+
+	.filtros {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 0.75rem 1.5rem;
+	}
+
+	.chips {
+		display: flex;
+		gap: 0.375rem;
+		flex-wrap: wrap;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-pill);
+		background: var(--color-surface);
+		color: var(--color-text-muted);
+		font: inherit;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.chip--ativo {
+		background: var(--color-text);
+		border-color: var(--color-text);
+		color: var(--color-surface);
+	}
+
+	.chip__n {
+		font-variant-numeric: tabular-nums;
+		opacity: 0.7;
+	}
+
+	.periodo {
+		display: flex;
+		align-items: flex-end;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.periodo__campo {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+	}
+
+	.periodo__campo input {
+		padding: 0.4rem 0.625rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font: inherit;
+		font-size: 0.875rem;
+	}
+
+	.limpar {
+		background: none;
+		border: none;
+		padding: 0.45rem 0.25rem;
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.limpar:hover {
+		text-decoration: underline;
 	}
 
 	.section-label {
