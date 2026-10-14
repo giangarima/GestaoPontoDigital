@@ -27,10 +27,15 @@ jobs:
           node-version: 22
           cache: npm
 
-      # `postinstall` roda `prisma generate`, e prisma.config.ts exige
-      # DATABASE_URL só para carregar — o valor não é usado, nada conecta aqui.
+      # Sem os scripts do npm: o `postinstall` (prisma generate) quebraria aqui,
+      # porque o tsconfig.json herda de .svelte-kit/tsconfig.json, que só existe
+      # depois do `svelte-kit sync`. Então: instala, sincroniza, gera.
+      # prisma.config.ts exige DATABASE_URL só para carregar — nada conecta aqui.
       - name: Instalar dependências
-        run: npm ci
+        run: |
+          npm ci --ignore-scripts
+          npx svelte-kit sync
+          npx prisma generate
         env:
           DATABASE_URL: postgresql://user:pass@localhost:5432/db
 
