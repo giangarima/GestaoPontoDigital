@@ -40,9 +40,10 @@ No nginx, um `server` para `dev.<domínio>` com `proxy_pass http://127.0.0.1:305
 ```bash
 cd ~/ontime
 docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" | gzip > ~/backup-antes.sql.gz
-docker compose exec postgres psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE \"$POSTGRES_DB\" WITH (FORCE)"
-docker compose exec postgres psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"$POSTGRES_DB\""
-docker compose restart app          # start:prod aplica as migrations no banco vazio
+docker compose stop app
+# Zera o schema em vez de apagar o banco: funciona até quando POSTGRES_DB=postgres.
+docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker compose start app            # start:prod aplica as migrations no schema vazio
 docker compose exec \
   -e EMPRESA_NOME="..." -e EMPRESA_CNPJ="..." \
   -e ADMIN_NOME="..." -e ADMIN_EMAIL="..." -e ADMIN_CPF="..." -e ADMIN_SENHA="..." \
