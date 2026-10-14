@@ -24,7 +24,7 @@ Projeto desenvolvido para a disciplina de **Projeto de Desenvolvimento I** da **
 ## 🔗 Links Principais
 
 - 🌐 **Deploy da Aplicação:** *https://controle-ponto-6l0g.onrender.com/*
-- 💻 **GitHub:** *https://github.com/GianG-17/Frameworks_Web*
+- 💻 **GitHub:** *https://github.com/giangarima/GestaoPontoDigital*
 - 💻 **GitLab:** *https://gitlab.com/senac-projetos-de-desenvolvimento/2026-1-angelo-gian/controle_ponto*
 - 🗂️ **Trello:** *https://trello.com/b/aX6doi72/controle-de-ponto-pd1*
 - 📊 **Apresentação:** *https://canva.link/l2whdkiic5za996*

@@ -24,7 +24,7 @@ O `origin` empurra para GitHub e GitLab juntos; as Actions só rodam no GitHub.
 ## Staging: primeira instalação
 
 ```bash
-git clone git@github.com:GianG-17/Frameworks_Web.git ~/ontime-dev
+git clone https://github.com/giangarima/GestaoPontoDigital.git ~/ontime-dev
 cd ~/ontime-dev && git checkout dev
 cp .env.example .env   # DATABASE_URL do Neon (?sslmode=require), PORT=3051,
                        # ORIGIN=https://dev.<domínio>, JWT_SECRET próprio, COMPROVANTE_SKIP_SIGN=true
