@@ -1,0 +1,26 @@
+# Staging (branch `dev`) na mesma VPS da produção, por cima do docker-compose.yml:
+#
+#   docker compose -p ontime-dev -f docker-compose.yml -f docker-compose.staging.yml up -d --build app
+#
+# Diferenças: banco no Neon (DATABASE_URL do .env do staging) em vez do Postgres
+# do compose, outro nome de container, outra porta e outro volume — nada aqui
+# encosta no banco ou no cache da produção. O `-p ontime-dev` separa a rede e os
+# volumes do projeto `ontime` da produção.
+services:
+  # O staging não sobe banco próprio: o profile nunca é ativado.
+  postgres:
+    profiles: ['nunca']
+
+  app:
+    container_name: ontime_dev_app
+    depends_on: !reset []
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?defina DATABASE_URL (Neon) no .env do staging}
+      APP_ENV: staging
+    ports: !override
+      - '127.0.0.1:${PORT:-3051}:${PORT:-3051}'
+    volumes: !override
+      - comprovantes_dev:/app/storage
+
+volumes:
+  comprovantes_dev:

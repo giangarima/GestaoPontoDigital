@@ -135,7 +135,9 @@ O projeto adota um modelo de precificação simplificado com custo fixo mensal, 
 
 ## 🔐 Credenciais de Teste
 
-Senha `Senha123` para todos. O login também aceita CPF no lugar do e-mail.
+Valem no **staging** (branch `dev`) e no ambiente local, que rodam o seed de demonstração. A
+produção não tem dados de teste. Senha `Senha123` para todos. O login também aceita CPF no lugar
+do e-mail.
 
 | 👤Usuário         | 🔑Identificador       | 🏷️Papel             |
 | ----------------- | --------------------- | ------------------- |

@@ -35,6 +35,13 @@ async function limpar() {
 }
 
 async function main() {
+	// O seed começa apagando tudo: na produção isso seria perda total de dados.
+	// Banco novo de produção usa `npm run db:bootstrap`.
+	if (process.env.APP_ENV === 'production') {
+		throw new Error(
+			'Seed recusado: APP_ENV=production. Para criar a primeira empresa use `npm run db:bootstrap`.'
+		);
+	}
 	await limpar();
 
 	const senhaHash = await bcrypt.hash('Senha123', 10);

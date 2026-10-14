@@ -19,6 +19,7 @@
 		"postinstall": "prisma generate",
 		"db:migrate": "prisma migrate dev",
 		"db:seed": "tsx prisma/seed.ts",
+		"db:bootstrap": "tsx prisma/bootstrap.ts",
 		"db:studio": "prisma studio",
 		"db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
 		"generate:cert": "node scripts/generate-dev-cert.mjs"

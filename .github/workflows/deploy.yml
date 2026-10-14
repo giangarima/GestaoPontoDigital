@@ -5,6 +5,12 @@ on:
     branches:
       - main # dispara somente quando o push vai para a main
 
+# Produção e staging (deploy-dev.yml) fazem o build na mesma VPS de 2 GB: dois ao
+# mesmo tempo estouram a memória. O grupo compartilhado faz um esperar o outro.
+concurrency:
+  group: vps-build
+  cancel-in-progress: false
+
 jobs:
   # Um push quebrado não pode derrubar a produção: o servidor só é tocado depois
   # que type-check, lint e testes unitários passam. Os testes de banco ficam de
