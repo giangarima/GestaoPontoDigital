@@ -32,8 +32,22 @@ docker compose -p ontime-dev -f docker-compose.yml -f docker-compose.staging.yml
 docker compose -p ontime-dev -f docker-compose.yml -f docker-compose.staging.yml exec app npm run db:seed
 ```
 
-No nginx, um `server` para `dev.<domínio>` com `proxy_pass http://127.0.0.1:3051;` e
-`sudo certbot --nginx -d dev.<domínio>`. O `ORIGIN` precisa bater exatamente com a URL pública.
+O proxy da VPS é o **Caddy** (portas 80/443, HTTPS automático). Acrescente ao
+`/etc/caddy/Caddyfile`:
+
+```
+dev.<domínio> {
+	reverse_proxy 127.0.0.1:3051
+}
+```
+
+e rode `sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && sudo systemctl reload caddy`.
+O certificado sai sozinho quando o registro A `dev` apontar para a VPS. O `ORIGIN` precisa bater
+exatamente com a URL pública.
+
+Cuidado com `source .env` no shell: as variáveis exportadas têm prioridade sobre o `.env` no compose,
+e o `.env` da produção carregado na sessão faz o staging subir na porta e no banco errados. Use um
+subshell: `(set -a; source .env; set +a; comando)`.
 
 ## Produção: banco novo (sem seed)
 
