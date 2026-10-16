@@ -122,7 +122,7 @@
 	// Escala comum das barras de saldo: o maior desvio ocupa meia trilha.
 	const maxSaldo = $derived(Math.max(1, ...linhasFiltradas.map((l) => Math.abs(l.saldo))));
 
-	/** Banco de horas com sinal explícito: "+4h 29min", "-7h 34min". */
+	/** Saldo com sinal explícito: "+4h 29min", "-7h 34min". */
 	const formatSaldo = (horas: number) => (horas > 0 ? '+' : '') + formatHoursMinutes(horas * 60);
 
 	// Cor do avatar presa à pessoa (ordem alfabética da resposta), não à posição na tabela.
@@ -166,7 +166,7 @@
 			'Em aberto',
 			'Extras',
 			'Déficit',
-			'Banco',
+			'Saldo',
 			'Férias',
 			'Justificadas'
 		];
@@ -427,9 +427,11 @@
 				/>
 				<StatCard
 					tone={totais.saldo < 0 ? 'danger' : 'success'}
-					label="Banco do mês"
+					label="Saldo do mês"
 					value={formatSaldo(totais.saldo)}
-					detalhe="{formatSaldo(totais.credito)} a compensar · {formatSaldo(totais.debito)} devidas"
+					detalhe="{formatSaldo(totais.credito)} em extras · {formatSaldo(
+						totais.debito
+					)} em déficit"
 				/>
 				<StatCard
 					tone={totais.faltas > 0 ? 'danger' : 'neutral'}
@@ -441,7 +443,7 @@
 					tone={totais.emAberto > 0 ? 'warning' : 'neutral'}
 					label="Dias em aberto"
 					value={totais.emAberto}
-					detalhe={totais.emAberto > 0 ? 'o banco ainda pode mudar →' : 'nada a tratar'}
+					detalhe={totais.emAberto > 0 ? 'o saldo ainda pode mudar →' : 'nada a tratar'}
 					href="{resolve('/admin/pendencias', {})}?mes={mes}"
 				/>
 			</div>
@@ -461,7 +463,7 @@
 								{@render th('faltas', 'Faltas')}
 								{@render th('diasEmAberto', 'Em aberto')}
 								<th class="right">Justif.</th>
-								{@render th('saldo', 'Banco do mês')}
+								{@render th('saldo', 'Saldo do mês')}
 							</tr>
 						</thead>
 						<tbody>
@@ -745,7 +747,7 @@
 		color: var(--color-primary);
 	}
 
-	/* Banco do mês: barra divergente com o zero no centro + valor com sinal. */
+	/* Saldo do mês: barra divergente com o zero no centro + valor com sinal. */
 	.saldo {
 		display: flex;
 		align-items: center;
