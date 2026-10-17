@@ -43,6 +43,8 @@ export interface LinhaPainel {
 	diferencaMin: number | null;
 	atrasado: boolean;
 	diaEmAberto: boolean;
+	/** Batida do dia fora de todos os locais ou sem localização. */
+	localizacaoAlerta: 'fora' | 'sem_localizacao' | null;
 	ausencia: { tipo: string; rotulo: string } | null;
 	feriado: FeriadoDoDia | null;
 	situacao: SituacaoDia;
@@ -63,6 +65,7 @@ export interface ResumoPainel {
 	feriados: number;
 	semJornada: number;
 	diasEmAberto: number;
+	alertasLocal: number;
 	marcacoesDoDia: number;
 	colaboradoresAtivos: number;
 }

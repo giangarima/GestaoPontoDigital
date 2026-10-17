@@ -11,6 +11,7 @@
 	import type { RegistroType, DailySummary, ComprovanteItem } from '@/services/timesheet.service';
 	import { formatDate, formatTime, diffInMinutes } from '@/utils/date';
 	import { dataBrasiliaExtenso, horaBrasilia } from '@/utils/relogio';
+	import { descreverLocalizacao, obterPosicao } from '@/utils/geolocalizacao';
 
 	const REGISTRO_LABELS: Record<RegistroType, string> = {
 		entrada: 'Entrada',
@@ -32,6 +33,8 @@
 	let loading = $state(false);
 	let registrando = $state(false);
 	let errorMsg = $state('');
+	let obtendoLocal = $state(false);
+	let avisoLocal = $state('');
 	let now = $state(new Date());
 	// Relógio do REP: hora do servidor (não a do dispositivo), em Brasília.
 	// null = ainda não sincronizou ou falhou → mostra a hora do dispositivo.
@@ -109,14 +112,23 @@
 
 		registrando = true;
 		errorMsg = '';
+		avisoLocal = '';
 		try {
-			await timesheetService.registrar({ type, method: 'manual' });
+			obtendoLocal = true;
+			const posicao = await obterPosicao();
+			obtendoLocal = false;
+			const registro = await timesheetService.registrar({ type, method: 'manual', posicao });
+			// Só informa: a batida já entrou, fora do local ou sem posição.
+			if (registro.localizacao === 'fora' || registro.localizacao === 'sem_localizacao') {
+				avisoLocal = `${descreverLocalizacao(registro)}. A marcação foi registrada e a empresa poderá conferir.`;
+			}
 			lastSuccess = REGISTRO_LABELS[type];
 			setTimeout(() => (lastSuccess = ''), 3000);
 			await Promise.all([loadToday(), loadComprovantes()]);
 		} catch {
 			errorMsg = 'Erro ao registrar ponto.';
 		} finally {
+			obtendoLocal = false;
 			registrando = false;
 		}
 	}
@@ -189,8 +201,12 @@
 	<div class="action">
 		{#if nextRegistroType}
 			<Button variant="primary" size="lg" loading={registrando} onclick={handleRegistrar}>
-				{REGISTRO_LABELS[nextRegistroType]}
+				{obtendoLocal ? 'Obtendo localização…' : REGISTRO_LABELS[nextRegistroType]}
 			</Button>
+			<p class="aviso-lgpd">
+				<Icon name="map-pin" size={12} />
+				A localização é coletada só no momento da marcação, para conferir o local de trabalho.
+			</p>
 		{:else}
 			<div class="done-box">
 				<Icon name="check-circle" size={28} />
@@ -201,6 +217,12 @@
 			<div class="success-toast">
 				<Icon name="check" size={14} stroke={2.5} />
 				{lastSuccess} registrado com sucesso
+			</div>
+		{/if}
+		{#if avisoLocal}
+			<div class="aviso-local" role="status">
+				<Icon name="map-pin" size={14} />
+				{avisoLocal}
 			</div>
 		{/if}
 	</div>
@@ -474,6 +496,27 @@
 	.empty {
 		text-align: center;
 		color: var(--color-text-subtle);
+	}
+
+	.aviso-lgpd {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		margin: 0;
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
+		text-align: center;
+	}
+
+	.aviso-local {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: var(--color-warning-bg);
+		color: var(--color-warning-strong);
+		padding: 0.5rem 1rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.875rem;
 	}
 
 	.error {

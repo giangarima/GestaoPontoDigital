@@ -15,9 +15,9 @@ const dados = lerDadosBootstrap({
 describe('bootstrapEmpresa', () => {
 	it('recusa quando o banco já tem empresa, sem criar nada', async () => {
 		await criarEmpresa();
-		const antes = await prisma.empresa.count();
 		await expect(bootstrapEmpresa(prisma, dados)).rejects.toThrow(/já tem/);
-		expect(await prisma.empresa.count()).toBe(antes);
+		// Não conta o total: outros arquivos de teste criam empresas no mesmo banco.
+		expect(await prisma.empresa.count({ where: { nome: 'Loja Centro' } })).toBe(0);
 		expect(await prisma.usuario.count({ where: { email: 'fulana@loja.com' } })).toBe(0);
 	});
 });

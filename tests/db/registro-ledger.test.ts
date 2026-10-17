@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/server/db';
 import { hashRegistro } from '@/lib/server/registro-hash';
+import { avaliarPosicao } from '@/lib/server/geolocalizacao';
 import {
 	registrarEventoEmpregado,
 	registrarEventoEmpregador,
@@ -221,6 +222,53 @@ describe('verificarCadeia: detecção de adulteração', () => {
 			quebraNsr: '4',
 			motivo: 'hashAnterior não corresponde'
 		});
+	});
+});
+
+describe('geolocalização da batida', () => {
+	it('grava a conferência do local sem mexer no hash: a cadeia segue válida', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+		const local = await prisma.localTrabalho.create({
+			data: { empresaId: empresa.id, nome: 'Loja', latitude: -30.03, longitude: -51.22, raioM: 100 }
+		});
+
+		const dentro = avaliarPosicao({ latitude: -30.0302, longitude: -51.22, precisao: 10 }, [local]);
+		const fora = avaliarPosicao({ latitude: -30.05, longitude: -51.22, precisao: 10 }, [local]);
+		const r1 = await baterPonto(empresa.id, colaborador.id, usuario.cpf, { geo: dentro });
+		const r2 = await baterPonto(empresa.id, colaborador.id, usuario.cpf, { geo: fora });
+		const r3 = await baterPonto(empresa.id, colaborador.id, usuario.cpf, {
+			geo: avaliarPosicao(null, [local])
+		});
+
+		expect(r1).toMatchObject({ localizacao: 'dentro', localTrabalhoId: local.id, distanciaM: 22 });
+		expect(r2).toMatchObject({ localizacao: 'fora', localTrabalhoId: local.id });
+		expect(r2.distanciaM).toBeGreaterThan(2000);
+		expect(r3).toMatchObject({ localizacao: 'sem_localizacao', latitude: null });
+		// O hash é o da fórmula oficial, que não conhece a localização.
+		expect(r1.hash).toBe(
+			hashRegistro(
+				{ nsr: r1.nsr!, marcadoEm: r1.marcadoEm, cpf: r1.cpf, registradoEm: r1.registradoEm },
+				null
+			)
+		);
+		expect(await verificarCadeia(empresa.id)).toMatchObject({ total: 3, valida: true });
+	});
+
+	it('apagar o local não apaga a batida: o vínculo vira null e a situação fica', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+		const local = await prisma.localTrabalho.create({
+			data: { empresaId: empresa.id, nome: 'Loja', latitude: -30.03, longitude: -51.22, raioM: 100 }
+		});
+		const r = await baterPonto(empresa.id, colaborador.id, usuario.cpf, {
+			geo: avaliarPosicao({ latitude: -30.03, longitude: -51.22, precisao: 5 }, [local])
+		});
+
+		await prisma.localTrabalho.delete({ where: { id: local.id } });
+
+		const depois = await prisma.registro.findUniqueOrThrow({ where: { id: r.id } });
+		expect(depois).toMatchObject({ localizacao: 'dentro', localTrabalhoId: null });
 	});
 });
 

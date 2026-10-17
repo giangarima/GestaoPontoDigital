@@ -16,6 +16,7 @@
  */
 import { prisma } from '@/lib/server/db';
 import { hashRegistro } from '@/lib/server/registro-hash';
+import type { GeoRegistro } from '@/lib/server/geolocalizacao';
 import type { Prisma, Registro } from '@/lib/server/prisma-client/client';
 
 /** Aloca o próximo NSR da empresa de forma atômica (serializa por row lock). */
@@ -36,6 +37,8 @@ export interface NovoRegistroData {
 	marcadoEm?: Date;
 	criadoPor?: string | null;
 	criadoMotivo?: string | null;
+	/** Geolocalização conferida (`avaliarPosicao`). Fica fora do hash e do AFD. */
+	geo?: GeoRegistro;
 }
 
 /**
@@ -77,7 +80,8 @@ export async function criarRegistro(
 			fonte: 'O',
 			nsr,
 			hash,
-			hashAnterior
+			hashAnterior,
+			...data.geo
 		}
 	});
 }

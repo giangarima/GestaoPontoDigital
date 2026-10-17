@@ -9,6 +9,7 @@
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { DailySummary, RegistroType } from '@/services/timesheet.service';
 	import { formatTime, formatHoursMinutes, toDateKey } from '@/utils/date';
+	import { descreverLocalizacao } from '@/utils/geolocalizacao';
 	import { SvelteDate } from 'svelte/reactivity';
 	import { baixar } from '@/services/api';
 	import Button from '@/components/ui/Button.svelte';
@@ -221,6 +222,15 @@
 										<span class="day__punch-label">{REGISTRO_LABELS[registro.type]}</span>
 									</div>
 									<span class="day__punch-time">{formatTime(registro.timestamp)}</span>
+									{#if descreverLocalizacao(registro)}
+										<span
+											class="day__punch-local"
+											class:day__punch-local--alerta={registro.localizacao !== 'dentro'}
+										>
+											<Icon name="map-pin" size={11} />
+											{descreverLocalizacao(registro)}
+										</span>
+									{/if}
 								</div>
 							{/each}
 						</div>
@@ -471,6 +481,19 @@
 		font-variant-numeric: tabular-nums;
 		font-size: 1rem;
 		padding-left: 1rem;
+	}
+
+	.day__punch-local {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding-left: 1rem;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.day__punch-local--alerta {
+		color: var(--color-warning-strong);
 	}
 
 	.empty {

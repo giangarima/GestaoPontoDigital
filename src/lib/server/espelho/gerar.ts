@@ -41,7 +41,7 @@ export async function carregarEspelho(
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(inicio, fim) },
 			orderBy: { marcadoEm: 'asc' },
-			include: { anulacao: true }
+			include: { anulacao: true, localTrabalho: { select: { nome: true } } }
 		}),
 		prisma.ausencia.findMany({
 			where: { colaboradorId, empresaId, status: 'aprovada', ...ausenciaNoPeriodo(inicio, fim) }

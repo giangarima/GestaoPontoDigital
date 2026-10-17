@@ -1,6 +1,7 @@
 <!--
   @page /admin/empresa
-  @description Dados da empresa (nome, CNPJ, horários) e regime do banco de horas.
+  @description Dados da empresa (nome, CNPJ, horários), regime do banco de horas e
+  locais de trabalho (conferência da geolocalização da batida).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -8,6 +9,7 @@
 	import { user as userStore } from '@/store/auth.store';
 	import { get } from 'svelte/store';
 	import Button from '@/components/ui/Button.svelte';
+	import LocaisTrabalho from '@/components/empresa/LocaisTrabalho.svelte';
 
 	let empresa = $state<Empresa | null>(null);
 	let salvando = $state(false);
@@ -152,6 +154,8 @@
 				{salvandoBanco ? 'Salvando…' : 'Salvar banco de horas'}
 			</Button>
 		</div>
+
+		<LocaisTrabalho />
 	</div>
 </section>
 

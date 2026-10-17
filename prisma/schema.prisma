@@ -46,6 +46,7 @@ model Empresa {
   nsrSequencia      EmpresaNsrSequencia?
   comprovantes      Comprovante[]
   feriados          Feriado[]
+  locaisTrabalho    LocalTrabalho[]
 
   @@map("empresas")
 }
@@ -194,6 +195,18 @@ model Registro {
   substituiAnulacao RegistroAnulacao? @relation("registroSubstituto")
 
   comprovante Comprovante? @relation("registro_comprovante")
+
+  // Geolocalização da batida (ver `src/lib/server/geolocalizacao.ts`). Snapshot
+  // gravado no momento da marcação: editar ou desativar o local depois não reescreve
+  // o histórico. Não entra no AFD nem no hash. `localizacao`: "dentro" | "fora" |
+  // "sem_localizacao" | "sem_locais"; null = anterior ao recurso ou inclusão do admin.
+  latitude        Float?
+  longitude       Float?
+  precisaoM       Int?           @map("precisao_m")
+  localizacao     String?
+  localTrabalhoId String?        @map("local_trabalho_id")
+  localTrabalho   LocalTrabalho? @relation(fields: [localTrabalhoId], references: [id], onDelete: SetNull)
+  distanciaM      Int?           @map("distancia_m")
 
   @@unique([empresaId, nsr])
   @@index([colaboradorId, marcadoEm])
@@ -397,4 +410,24 @@ model EscalaAjuste {
 
   @@id([colaboradorId, data])
   @@map("escala_ajustes")
+}
+
+// Local de trabalho para a conferência da geolocalização da batida: ponto + raio.
+// A batida vale em qualquer local ativo da empresa; fora de todos ela entra do
+// mesmo jeito e é sinalizada (art. 74 da Portaria 671 veda restringir a marcação).
+model LocalTrabalho {
+  id        String     @id @default(cuid())
+  empresaId String     @map("empresa_id")
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nome      String
+  latitude  Float
+  longitude Float
+  raioM     Int        @default(150) @map("raio_m")
+  ativo     Boolean    @default(true)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  registros Registro[]
+
+  @@index([empresaId])
+  @@map("locais_trabalho")
 }

@@ -203,6 +203,19 @@ export async function seedEmpresaImportada(
 		}
 	});
 
+	// Local de trabalho para a conferência da geolocalização. Ponto fictício (o AFDT
+	// não tem endereço); as marcações importadas ficam sem localização gravada
+	// (`localizacao = null`, anteriores ao recurso) — não se inventa posição para elas.
+	await prisma.localTrabalho.create({
+		data: {
+			empresaId: empresa.id,
+			nome: 'Matriz',
+			latitude: -30.0277,
+			longitude: -51.2287,
+			raioM: 150
+		}
+	});
+
 	const admin = await prisma.usuario.create({
 		data: {
 			empresaId: empresa.id,

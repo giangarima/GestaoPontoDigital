@@ -19,6 +19,8 @@
 	import RegistroAjusteModal from './RegistroAjusteModal.svelte';
 	import ReverterAnulacaoModal from './ReverterAnulacaoModal.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import Icon from '@/components/ui/Icon.svelte';
+	import { descreverLocalizacao, linkMapa } from '@/utils/geolocalizacao';
 	import { ROTULO_TIPO, type FeriadoDoDia } from '@/services/feriado.service';
 
 	interface Props {
@@ -308,6 +310,26 @@
 												>
 													{formatHora(registro.timestamp)}
 												</span>
+											{/if}
+											{#if registro.localizacao === 'fora' || registro.localizacao === 'sem_localizacao'}
+												{@const textoLocal = descreverLocalizacao(registro) ?? ''}
+												{#if registro.latitude != null && registro.longitude != null}
+													<!-- eslint-disable svelte/no-navigation-without-resolve -- link externo (OpenStreetMap) -->
+													<a
+														class="local-alerta"
+														href={linkMapa(registro.latitude, registro.longitude)}
+														target="_blank"
+														rel="noopener noreferrer"
+														title="{textoLocal} — ver no mapa"
+														aria-label="{textoLocal} — ver no mapa"
+														><Icon name="map-pin" size={11} /></a
+													>
+													<!-- eslint-enable svelte/no-navigation-without-resolve -->
+												{:else}
+													<span class="local-alerta" title={textoLocal} aria-label={textoLocal}
+														><Icon name="map-pin" size={11} /></span
+													>
+												{/if}
 											{/if}
 										</td>
 									{:else}
@@ -639,6 +661,19 @@
 
 	.cel {
 		padding: 0.25rem;
+		position: relative;
+	}
+	/* Batida fora do local ou sem localização: entrou, mas pede conferência. */
+	.local-alerta {
+		position: absolute;
+		top: 0;
+		right: 0;
+		display: inline-flex;
+		padding: 2px;
+		border-radius: 50%;
+		background: var(--color-warning-bg);
+		color: var(--color-warning);
+		border: 1px solid var(--color-warning);
 	}
 	.batida {
 		width: 100%;

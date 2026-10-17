@@ -147,6 +147,47 @@ describe('carregarPainelDia', () => {
 	});
 });
 
+describe('carregarPainelDia — geolocalização', () => {
+	it('batida fora do local vira alerta e divergência; anulada não conta', async () => {
+		const empresa = await criarEmpresa();
+		const { usuario, colaborador } = await criarColaborador(empresa.id);
+		await vincularJornada(empresa.id, colaborador.id);
+		const horas = ['08:00', '12:00', '13:00', '17:00'];
+		const regs = [];
+		for (const [i, h] of horas.entries()) {
+			regs.push(
+				await baterPonto(empresa.id, colaborador.id, usuario.cpf, {
+					marcadoEm: brt(`${TERCA}T${h}`),
+					geo: {
+						latitude: -30,
+						longitude: -51,
+						precisaoM: 10,
+						localizacao: i === 1 ? 'fora' : 'dentro',
+						localTrabalhoId: null,
+						distanciaM: i === 1 ? 900 : 10
+					}
+				})
+			);
+		}
+
+		let p = await carregarPainelDia(empresa.id, TERCA, DEPOIS);
+		expect(p.linhas[0]).toMatchObject({ localizacaoAlerta: 'fora', divergencia: true });
+		expect(p.resumo.alertasLocal).toBe(1);
+
+		// Anular a batida fora do local tira o alerta (e o dia fica ímpar).
+		await prisma.registroAnulacao.create({
+			data: {
+				registroId: regs[1].id,
+				empresaId: empresa.id,
+				motivo: 'teste',
+				anuladoPor: usuario.id
+			}
+		});
+		p = await carregarPainelDia(empresa.id, TERCA, DEPOIS);
+		expect(p.linhas[0].localizacaoAlerta).toBeNull();
+	});
+});
+
 describe('carregarPainelDia — vínculo', () => {
 	it('quem foi admitido depois do dia não aparece', async () => {
 		const empresa = await criarEmpresa();

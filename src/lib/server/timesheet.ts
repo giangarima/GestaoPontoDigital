@@ -39,6 +39,12 @@ export interface RegistroDTO {
 	createdReason: string | null;
 	nsr?: string;
 	anulacao: AnulacaoDTO | null;
+	/** Conferência do local (`geolocalizacao.ts`); ausente = anterior ao recurso ou inclusão. */
+	localizacao?: string;
+	distanciaM?: number;
+	localNome?: string;
+	latitude?: number;
+	longitude?: number;
 }
 
 export interface DailySummaryDTO {
@@ -54,7 +60,11 @@ export interface DailySummaryDTO {
 	feriado: FeriadoDoDia | null;
 }
 
-export type RegistroComAnulacao = Registro & { anulacao?: RegistroAnulacao | null };
+export type RegistroComAnulacao = Registro & {
+	anulacao?: RegistroAnulacao | null;
+	/** Incluído pelas leituras que mostram a geolocalização (`include: { localTrabalho }`). */
+	localTrabalho?: { nome: string } | null;
+};
 
 export function toRegistroDTO(p: RegistroComAnulacao): RegistroDTO {
 	return {
@@ -73,7 +83,12 @@ export function toRegistroDTO(p: RegistroComAnulacao): RegistroDTO {
 					anuladoEm: p.anulacao.anuladoEm.toISOString(),
 					registroSubstitutoId: p.anulacao.registroSubstitutoId ?? null
 				}
-			: null
+			: null,
+		localizacao: p.localizacao ?? undefined,
+		distanciaM: p.distanciaM ?? undefined,
+		localNome: p.localTrabalho?.nome,
+		latitude: p.latitude ?? undefined,
+		longitude: p.longitude ?? undefined
 	};
 }
 

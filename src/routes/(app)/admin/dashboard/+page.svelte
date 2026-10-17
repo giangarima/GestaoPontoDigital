@@ -212,7 +212,14 @@
 	}
 
 	// ── Filtro e busca ────────────────────────────────────────────────────────
-	type Filtro = 'todos' | 'atrasados' | 'faltas' | 'nao_chegaram' | 'trabalhando' | 'afastados';
+	type Filtro =
+		| 'todos'
+		| 'atrasados'
+		| 'faltas'
+		| 'nao_chegaram'
+		| 'trabalhando'
+		| 'afastados'
+		| 'local';
 
 	let filtro = $state<Filtro>('todos');
 	let busca = $state('');
@@ -223,6 +230,7 @@
 		faltas: (l) => l.situacao === 'falta_provavel',
 		nao_chegaram: (l) => l.situacao === 'ainda_nao_chegou',
 		trabalhando: (l) => l.situacao === 'trabalhando',
+		local: (l) => l.localizacaoAlerta !== null,
 		afastados: (l) =>
 			l.situacao === 'folga' ||
 			l.situacao === 'feriado' ||
@@ -253,6 +261,7 @@
 			n: painel?.resumo.naoChegaram ?? 0
 		},
 		{ id: 'trabalhando' as Filtro, rotulo: 'Trabalhando', n: painel?.resumo.trabalhando ?? 0 },
+		{ id: 'local' as Filtro, rotulo: 'Local a conferir', n: painel?.resumo.alertasLocal ?? 0 },
 		{
 			id: 'afastados' as Filtro,
 			rotulo: 'Folga e férias',
@@ -651,7 +660,20 @@
 										<span class="pessoa" role="cell">
 											<Avatar initials={iniciais(l.nome)} size={34} color={corAvatar(l.nome)} />
 											<span class="pessoa__meta">
-												<span class="pessoa__nome">{l.nome}</span>
+												<span class="pessoa__nome"
+													>{l.nome}
+													{#if l.localizacaoAlerta}
+														<span
+															class="pessoa__local"
+															title={l.localizacaoAlerta === 'fora'
+																? 'Batida fora do local de trabalho'
+																: 'Batida sem localização'}
+															aria-label={l.localizacaoAlerta === 'fora'
+																? 'Batida fora do local de trabalho'
+																: 'Batida sem localização'}><Icon name="map-pin" size={13} /></span
+														>
+													{/if}</span
+												>
 												<span class="pessoa__sub">
 													{l.departamento ?? 'Sem departamento'}{l.turno
 														? ` · ${ROTULO_TURNO[l.turno]}`
@@ -969,6 +991,13 @@
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--color-text);
+	}
+
+	.pessoa__local {
+		display: inline-flex;
+		vertical-align: -2px;
+		margin-left: 0.25rem;
+		color: var(--color-warning);
 	}
 
 	.pessoa__sub {

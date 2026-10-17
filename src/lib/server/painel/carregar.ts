@@ -165,7 +165,7 @@ export async function carregarPainelDia(
 		prisma.registro.findMany({
 			where: { empresaId, marcadoEm: instantesDoPeriodo(dia, dia), anulacao: { is: null } },
 			orderBy: { marcadoEm: 'asc' },
-			select: { colaboradorId: true, marcadoEm: true }
+			select: { colaboradorId: true, marcadoEm: true, localizacao: true }
 		}),
 		prisma.ausencia.findMany({
 			where: { empresaId, status: STATUS_APROVADA, ...ausenciaNoPeriodo(dia, dia) },
@@ -196,10 +196,14 @@ export async function carregarPainelDia(
 	);
 
 	const marcacoesPorColaborador = new Map<string, Date[]>();
+	const localizacoesPorColaborador = new Map<string, (string | null)[]>();
 	for (const r of registros) {
 		const lista = marcacoesPorColaborador.get(r.colaboradorId) ?? [];
 		lista.push(r.marcadoEm);
 		marcacoesPorColaborador.set(r.colaboradorId, lista);
+		const locs = localizacoesPorColaborador.get(r.colaboradorId) ?? [];
+		locs.push(r.localizacao);
+		localizacoesPorColaborador.set(r.colaboradorId, locs);
 	}
 
 	// `ausenciaDateKeys` resolve o intervalo em dias puros, igual ao espelho.
@@ -225,6 +229,7 @@ export async function carregarPainelDia(
 				versoes: c.jornada?.versoes ?? [],
 				escala: escalas.get(c.id) ?? null,
 				marcacoes: marcacoesPorColaborador.get(c.id) ?? [],
+				localizacoes: localizacoesPorColaborador.get(c.id) ?? [],
 				ausencia: ausenciaPorColaborador.get(c.id) ?? null,
 				feriado: feriadoDoDia
 					? {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	ATRASO_MIN,
 	MARGEM_FALTA_MIN,
+	alertaLocalizacao,
 	montarLinha,
 	ordenarLinhas,
 	resumirLinhas,
@@ -266,6 +267,50 @@ describe('montarLinha — ausência, folga e jornada', () => {
 	it('colaborador sem departamento devolve null, não um traço', () => {
 		const l = linha({ departamento: null }, TERCA, '2026-03-04T09:00');
 		expect(l.departamento).toBeNull();
+	});
+});
+
+describe('montarLinha — geolocalização', () => {
+	const cumpriu = ['08:00', '12:00', '13:00', '17:00'].map((h) => brt(`${TERCA}T${h}`));
+
+	it('batidas no local não geram alerta', () => {
+		const l = linha(
+			{ marcacoes: cumpriu, localizacoes: ['dentro', 'dentro', 'dentro', 'dentro'] },
+			TERCA,
+			'2026-03-04T09:00'
+		);
+		expect(l.localizacaoAlerta).toBeNull();
+		expect(l.divergencia).toBe(false);
+	});
+
+	it('uma batida fora do local vira divergência e sobe para "Precisa de atenção"', () => {
+		const l = linha(
+			{ marcacoes: cumpriu, localizacoes: ['dentro', 'fora', 'dentro', 'dentro'] },
+			TERCA,
+			'2026-03-04T09:00'
+		);
+		expect(l.situacao).toBe('cumpriu');
+		expect(l.localizacaoAlerta).toBe('fora');
+		expect(l.divergencia).toBe(true);
+		expect(l.ordem).toBeLessThanOrEqual(2);
+	});
+
+	it('batida antiga ou empresa sem locais (null / sem_locais) não é divergência', () => {
+		const l = linha(
+			{ marcacoes: cumpriu, localizacoes: [null, 'sem_locais', null, null] },
+			TERCA,
+			'2026-03-04T09:00'
+		);
+		expect(l.localizacaoAlerta).toBeNull();
+		expect(l.divergencia).toBe(false);
+	});
+});
+
+describe('alertaLocalizacao', () => {
+	it('fora pesa mais que sem localização', () => {
+		expect(alertaLocalizacao(['sem_localizacao', 'fora'])).toBe('fora');
+		expect(alertaLocalizacao(['dentro', 'sem_localizacao'])).toBe('sem_localizacao');
+		expect(alertaLocalizacao([])).toBeNull();
 	});
 });
 

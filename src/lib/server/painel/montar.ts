@@ -57,6 +57,15 @@ export type SituacaoDia =
 	| 'ausencia'
 	| 'sem_jornada';
 
+/** Batida fora de todos os locais pesa mais que batida sem localização. */
+export type AlertaLocalizacao = 'fora' | 'sem_localizacao' | null;
+
+export function alertaLocalizacao(localizacoes: (string | null)[]): AlertaLocalizacao {
+	if (localizacoes.includes('fora')) return 'fora';
+	if (localizacoes.includes('sem_localizacao')) return 'sem_localizacao';
+	return null;
+}
+
 /** Rótulo do turno do dia, derivado do horário contratual e do da empresa. */
 export type Turno = 'abertura' | 'fechamento' | 'integral' | 'intermediario' | 'meio_periodo';
 
@@ -95,6 +104,8 @@ export interface LinhaPainel {
 	atrasado: boolean;
 	/** Dia encerrado com marcação ímpar — mesmo critério de `pendencias.ts`. */
 	diaEmAberto: boolean;
+	/** Pior conferência de local das marcações do dia (`geolocalizacao.ts`). */
+	localizacaoAlerta: AlertaLocalizacao;
 	ausencia: AusenciaPainel | null;
 	/** Feriado/ponto facultativo do dia; `escalado` = trabalha nele pela jornada. */
 	feriado: FeriadoDoDia | null;
@@ -115,6 +126,8 @@ export interface ColaboradorPainel {
 	escala: EscalaColaborador | null;
 	/** Instantes das marcações válidas do dia, em ordem. */
 	marcacoes: Date[];
+	/** `Registro.localizacao` das marcações válidas do dia (null = sem conferência). */
+	localizacoes?: (string | null)[];
 	/** Ausência aprovada que cobre o dia, se houver. */
 	ausencia: { tipo: string } | null;
 	/** Feriado ou ponto facultativo do dia, do ponto de vista do colaborador. */
@@ -265,12 +278,18 @@ export function montarLinha(
 
 	// Bater ponto em dia de folga ou durante ausência aprovada também é divergência.
 	const trabalhouSemPrevisao = n > 0 && (contratualMin === 0 || ausencia !== null);
+	// Batida fora do local ou sem posição entrou (não se bloqueia), mas pede conferência.
+	const localizacaoAlerta = alertaLocalizacao(c.localizacoes ?? []);
 	const divergencia =
-		situacao === 'falta_provavel' || diaEmAberto || atrasado || trabalhouSemPrevisao;
+		situacao === 'falta_provavel' ||
+		diaEmAberto ||
+		atrasado ||
+		trabalhouSemPrevisao ||
+		localizacaoAlerta !== null;
 
 	let ordem = ORDEM[situacao];
 	if (diaEmAberto) ordem = Math.min(ordem, 1);
-	if (atrasado) ordem = Math.min(ordem, 2);
+	if (atrasado || localizacaoAlerta) ordem = Math.min(ordem, 2);
 
 	return {
 		colaboradorId: c.id,
@@ -289,6 +308,7 @@ export function montarLinha(
 		diferencaMin,
 		atrasado,
 		diaEmAberto,
+		localizacaoAlerta,
 		ausencia,
 		feriado: c.feriado,
 		situacao,
@@ -310,6 +330,8 @@ export interface ResumoPainel {
 	feriados: number;
 	semJornada: number;
 	diasEmAberto: number;
+	/** Colaboradores com batida fora do local ou sem localização no dia. */
+	alertasLocal: number;
 	marcacoesDoDia: number;
 }
 
@@ -328,6 +350,7 @@ export function resumirLinhas(linhas: LinhaPainel[]): ResumoPainel {
 		feriados: conta((l) => l.situacao === 'feriado'),
 		semJornada: conta((l) => l.situacao === 'sem_jornada'),
 		diasEmAberto: conta((l) => l.diaEmAberto),
+		alertasLocal: conta((l) => l.localizacaoAlerta !== null),
 		marcacoesDoDia: linhas.reduce((soma, l) => soma + l.marcacoes, 0)
 	};
 }

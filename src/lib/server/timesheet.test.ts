@@ -22,6 +22,12 @@ function batida(tipo: string, iso: string): RegistroComAnulacao {
 		hashAnterior: null,
 		criadoPor: null,
 		criadoMotivo: null,
+		latitude: null,
+		longitude: null,
+		precisaoM: null,
+		localizacao: null,
+		localTrabalhoId: null,
+		distanciaM: null,
 		anulacao: null
 	};
 }

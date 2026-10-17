@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ request }) => {
 		prisma.registro.findMany({
 			where: { colaboradorId, marcadoEm: instantesDoPeriodo(hoje, hoje) },
 			orderBy: { marcadoEm: 'asc' },
-			include: { anulacao: true }
+			include: { anulacao: true, localTrabalho: { select: { nome: true } } }
 		}),
 		// Ausência aprovada que cobre o dia.
 		prisma.ausencia.findMany({

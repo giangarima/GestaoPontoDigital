@@ -6,6 +6,7 @@
 import type { FeriadoDoDia } from './feriado.service';
 import { post, get, baixar } from './api';
 import { desvioDoServidor } from '@/utils/relogio';
+import type { PosicaoDispositivo } from '@/utils/geolocalizacao';
 
 export type RegistroType = 'entrada' | 'saida_almoco' | 'retorno_almoco' | 'saida';
 
@@ -26,6 +27,12 @@ export interface RegistroRecord {
 	createdBy: string | null;
 	createdReason: string | null;
 	anulacao: RegistroAnulacao | null;
+	/** Conferência do local: 'dentro' | 'fora' | 'sem_localizacao' | 'sem_locais'. */
+	localizacao?: string;
+	distanciaM?: number;
+	localNome?: string;
+	latitude?: number;
+	longitude?: number;
 }
 
 export interface DailySummary {
@@ -52,8 +59,11 @@ export interface ComprovanteItem {
 }
 
 export const timesheetService = {
-	registrar: (data: { type: RegistroType; method: RegistroRecord['method'] }) =>
-		post<RegistroRecord>('/timesheet/registro', data),
+	registrar: (data: {
+		type: RegistroType;
+		method: RegistroRecord['method'];
+		posicao?: PosicaoDispositivo | null;
+	}) => post<RegistroRecord>('/timesheet/registro', data),
 
 	today: () => get<DailySummary>('/timesheet/today'),
 
