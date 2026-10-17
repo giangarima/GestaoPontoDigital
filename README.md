@@ -1,4 +1,4 @@
-# 🕒 Controle de Ponto - Gestão de Jornada Digital
+# 🕒 On Time - Gestão de Jornada Digital
 
 > Gestão inteligente, ágil e em conformidade legal da jornada de trabalho.
 
