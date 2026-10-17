@@ -2,6 +2,7 @@
 
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { colaboradoresStore } from '@/store/colaboradores.store';
 	import { colaboradorService } from '@/services/colaborador.service';
 	import ColaboradorModal from '@/components/colaboradores/ColaboradorModal.svelte';
@@ -227,7 +228,11 @@
 								<div class="colaborador-info">
 									<div class="avatar" aria-hidden="true">{iniciais(colaborador.nome)}</div>
 									<div>
-										<span class="colaborador-nome">{colaborador.nome}</span>
+										<a
+											class="colaborador-nome"
+											href={resolve('/admin/colaboradores/[id]', { id: colaborador.id })}
+											>{colaborador.nome}</a
+										>
 										<span class="colaborador-email">{colaborador.email}</span>
 									</div>
 								</div>
@@ -459,6 +464,12 @@
 		display: block;
 		font-weight: 500;
 		color: var(--color-text);
+		text-decoration: none;
+	}
+
+	.colaborador-nome:hover {
+		color: var(--color-primary);
+		text-decoration: underline;
 	}
 
 	.colaborador-email {

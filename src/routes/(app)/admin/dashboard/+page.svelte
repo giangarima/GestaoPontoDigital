@@ -661,7 +661,11 @@
 											<Avatar initials={iniciais(l.nome)} size={34} color={corAvatar(l.nome)} />
 											<span class="pessoa__meta">
 												<span class="pessoa__nome"
-													>{l.nome}
+													><a
+														class="pessoa__link"
+														href={resolve('/admin/colaboradores/[id]', { id: l.colaboradorId })}
+														>{l.nome}</a
+													>
 													{#if l.localizacaoAlerta}
 														<span
 															class="pessoa__local"
@@ -991,6 +995,16 @@
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--color-text);
+	}
+
+	.pessoa__link {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.pessoa__link:hover {
+		color: var(--color-primary);
+		text-decoration: underline;
 	}
 
 	.pessoa__local {

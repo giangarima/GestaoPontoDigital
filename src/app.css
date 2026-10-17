@@ -87,10 +87,20 @@
 	--shadow-primary: 0 4px 14px rgba(37, 99, 235, 0.3);
 
 	--sidebar-w: 260px;
+
+	/* Situações de dia nos gráficos (perfil do colaborador). Trio validado para
+	   daltonismo e visão normal contra a superfície de cada tema. */
+	--color-dia-atraso: #d97706;
+	--color-dia-falta: #b91c1c;
+	--color-dia-aberto: #2563eb;
 }
 
 :root[data-theme='dark'] {
 	color-scheme: dark;
+
+	--color-dia-atraso: #b8801f;
+	--color-dia-falta: #c93c55;
+	--color-dia-aberto: #4f86e8;
 
 	--color-bg: #0b1220;
 	--color-surface: #131c2e;
