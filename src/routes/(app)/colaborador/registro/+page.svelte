@@ -51,23 +51,35 @@
 	}
 	let lastSuccess = $state('');
 
-	const nextRegistroType: RegistroType | null = $derived.by(() => {
-		if (!summary) return 'entrada';
-		const registered = summary.registros.map((p) => p.type);
-		return REGISTRO_SEQUENCE.find((type) => !registered.includes(type)) ?? null;
-	});
+	// A marcação nunca é bloqueada (Portaria 671/2021, art. 74): depois da 4ª o botão
+	// continua, alternando entrada e saída. Contra o clique duplo, só uma pausa curta
+	// após cada batida e uma confirmação quando a anterior acabou de acontecer — a
+	// duplicada que passar ainda pode ser desconsiderada no tratamento.
+	const PAUSA_APOS_BATIDA_MS = 5_000;
+	const CONFIRMAR_SE_ULTIMA_HA_MS = 2 * 60_000;
+	let pausaAte = $state(0);
+	let confirmando = $state(false);
+
+	/** Marcações que contam no dia, em ordem (as desconsideradas no tratamento saem). */
+	const validas = $derived(
+		(summary?.registros ?? [])
+			.filter((r) => !r.anulacao)
+			.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+	);
+
+	const nextRegistroType: RegistroType = $derived(
+		REGISTRO_SEQUENCE[validas.length] ?? (validas.length % 2 === 0 ? 'entrada' : 'saida')
+	);
+
+	const ultima = $derived(validas.at(-1) ?? null);
+	const emPausa = $derived(now.getTime() < pausaAte);
 
 	const totalMinutes = $derived.by(() => {
-		if (!summary || summary.registros.length < 2) return 0;
-		const byType = new Map(summary.registros.map((p) => [p.type, p.timestamp]));
 		let total = 0;
-		const ent = byType.get('entrada');
-		const saA = byType.get('saida_almoco');
-		const reA = byType.get('retorno_almoco');
-		const sai = byType.get('saida');
-		if (ent && saA) total += diffInMinutes(ent, saA);
-		if (reA && sai) total += diffInMinutes(reA, sai);
-		else if (reA && !sai) total += diffInMinutes(reA, now);
+		for (let i = 0; i < validas.length; i += 2) {
+			const saida = validas[i + 1]?.timestamp ?? now;
+			total += diffInMinutes(validas[i].timestamp, saida);
+		}
 		return Math.max(0, total);
 	});
 
@@ -106,10 +118,17 @@
 		}
 	}
 
+	function handleClique(): void {
+		if (emPausa || registrando) return;
+		const recente =
+			ultima && now.getTime() - new Date(ultima.timestamp).getTime() < CONFIRMAR_SE_ULTIMA_HA_MS;
+		if (recente) confirmando = true;
+		else void handleRegistrar();
+	}
+
 	async function handleRegistrar(): Promise<void> {
 		const type = nextRegistroType;
-		if (!type) return;
-
+		confirmando = false;
 		registrando = true;
 		errorMsg = '';
 		avisoLocal = '';
@@ -123,6 +142,7 @@
 				avisoLocal = `${descreverLocalizacao(registro)}. A marcação foi registrada e a empresa poderá conferir.`;
 			}
 			lastSuccess = REGISTRO_LABELS[type];
+			pausaAte = Date.now() + (desvioMs ?? 0) + PAUSA_APOS_BATIDA_MS;
 			setTimeout(() => (lastSuccess = ''), 3000);
 			await Promise.all([loadToday(), loadComprovantes()]);
 		} catch {
@@ -145,8 +165,9 @@
 		};
 	});
 
-	function registroAt(type: RegistroType): string | null {
-		return summary?.registros.find((p) => p.type === type)?.timestamp ?? null;
+	/** Horário da i-ésima marcação válida do dia (as etapas seguem a ordem, não o rótulo). */
+	function registroAt(i: number): string | null {
+		return validas[i]?.timestamp ?? null;
 	}
 </script>
 
@@ -169,9 +190,9 @@
 	<Card>
 		<div class="steps">
 			{#each REGISTRO_SEQUENCE as type, i (type)}
-				{@const ts = registroAt(type)}
+				{@const ts = registroAt(i)}
 				{@const isDone = !!ts}
-				{@const isNext = !isDone && nextRegistroType === type}
+				{@const isNext = !isDone && validas.length === i}
 				<div class="step">
 					<div class="step__dot" class:is-done={isDone} class:is-next={isNext}>
 						{#if isDone}
@@ -199,19 +220,33 @@
 	{/if}
 
 	<div class="action">
-		{#if nextRegistroType}
-			<Button variant="primary" size="lg" loading={registrando} onclick={handleRegistrar}>
+		{#if confirmando && ultima}
+			<div class="confirmar" role="alertdialog" aria-labelledby="confirmar-texto">
+				<p id="confirmar-texto">
+					Você registrou <strong>{REGISTRO_LABELS[ultima.type]}</strong> às
+					{formatTime(ultima.timestamp)}. Registrar
+					<strong>{REGISTRO_LABELS[nextRegistroType]}</strong>
+					agora?
+				</p>
+				<div class="confirmar__acoes">
+					<Button variant="outline" onclick={() => (confirmando = false)}>Cancelar</Button>
+					<Button variant="primary" onclick={handleRegistrar}>Registrar mesmo assim</Button>
+				</div>
+			</div>
+		{:else}
+			<Button
+				variant="primary"
+				size="lg"
+				loading={registrando}
+				disabled={emPausa}
+				onclick={handleClique}
+			>
 				{obtendoLocal ? 'Obtendo localização…' : REGISTRO_LABELS[nextRegistroType]}
 			</Button>
 			<p class="aviso-lgpd">
 				<Icon name="map-pin" size={12} />
 				A localização é coletada só no momento da marcação, para conferir o local de trabalho.
 			</p>
-		{:else}
-			<div class="done-box">
-				<Icon name="check-circle" size={28} />
-				<span>Todos os registros do dia concluídos</span>
-			</div>
 		{/if}
 		{#if lastSuccess}
 			<div class="success-toast">
@@ -420,17 +455,27 @@
 		box-shadow: var(--shadow-primary);
 	}
 
-	.done-box {
+	.confirmar {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
 		gap: 0.75rem;
-		background: var(--color-success-bg);
-		color: var(--color-success);
-		border-radius: var(--radius-md);
-		padding: 1rem 1.5rem;
 		width: 100%;
-		font-weight: 600;
-		font-size: 1rem;
+		background: var(--color-warning-bg);
+		color: var(--color-warning-strong);
+		border-radius: var(--radius-md);
+		padding: 1rem 1.25rem;
+		font-size: 0.9375rem;
+	}
+
+	.confirmar p {
+		margin: 0;
+	}
+
+	.confirmar__acoes {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		flex-wrap: wrap;
 	}
 
 	.success-toast {

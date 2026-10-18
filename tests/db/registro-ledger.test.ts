@@ -11,7 +11,7 @@ import {
 	registrarEventoEmpregador,
 	verificarCadeia
 } from '@/lib/server/registro-ledger';
-import { baterPonto, criarColaborador, criarEmpresa, incluirPonto } from './fixtures';
+import { baterPonto, criarColaborador, criarEmpresa, incluirPonto, adulterar } from './fixtures';
 
 /** NSRs de todos os eventos da empresa (tipos 2, 5, 6 e 7), ordenados. */
 async function todosNsrs(empresaId: string): Promise<number[]> {
@@ -174,9 +174,11 @@ describe('verificarCadeia: detecção de adulteração', () => {
 
 	it('alterar o horário de uma batida direto no banco quebra a cadeia naquele NSR', async () => {
 		const empresa = await empresaCom5Batidas();
-		await prisma.$executeRaw`
+		await adulterar(
+			(tx) => tx.$executeRaw`
 			UPDATE registros SET marcado_em = marcado_em - interval '1 hour'
-			WHERE empresa_id = ${empresa.id} AND nsr = 3`;
+			WHERE empresa_id = ${empresa.id} AND nsr = 3`
+		);
 
 		expect(await verificarCadeia(empresa.id)).toEqual({
 			total: 5,
@@ -188,15 +190,19 @@ describe('verificarCadeia: detecção de adulteração', () => {
 
 	it('trocar o CPF de uma batida é detectado', async () => {
 		const empresa = await empresaCom5Batidas();
-		await prisma.$executeRaw`
-			UPDATE registros SET cpf = '99999999999' WHERE empresa_id = ${empresa.id} AND nsr = 2`;
+		await adulterar(
+			(tx) => tx.$executeRaw`
+			UPDATE registros SET cpf = '99999999999' WHERE empresa_id = ${empresa.id} AND nsr = 2`
+		);
 
 		expect(await verificarCadeia(empresa.id)).toMatchObject({ valida: false, quebraNsr: '2' });
 	});
 
 	it('apagar uma batida do meio quebra o elo da seguinte', async () => {
 		const empresa = await empresaCom5Batidas();
-		await prisma.$executeRaw`DELETE FROM registros WHERE empresa_id = ${empresa.id} AND nsr = 3`;
+		await adulterar(
+			(tx) => tx.$executeRaw`DELETE FROM registros WHERE empresa_id = ${empresa.id} AND nsr = 3`
+		);
 
 		expect(await verificarCadeia(empresa.id)).toEqual({
 			total: 4,
@@ -213,8 +219,10 @@ describe('verificarCadeia: detecção de adulteração', () => {
 		const r3 = await prisma.registro.findFirstOrThrow({ where: { empresaId: empresa.id, nsr: 3 } });
 		const marcadoEm = new Date(r3.marcadoEm.getTime() - 3600_000);
 		const hashForjado = hashRegistro({ ...r3, marcadoEm }, r3.hashAnterior);
-		await prisma.$executeRaw`
-			UPDATE registros SET marcado_em = ${marcadoEm}, hash = ${hashForjado} WHERE id = ${r3.id}`;
+		await adulterar(
+			(tx) => tx.$executeRaw`
+			UPDATE registros SET marcado_em = ${marcadoEm}, hash = ${hashForjado} WHERE id = ${r3.id}`
+		);
 
 		expect(await verificarCadeia(empresa.id)).toEqual({
 			total: 5,
@@ -255,7 +263,7 @@ describe('geolocalização da batida', () => {
 		expect(await verificarCadeia(empresa.id)).toMatchObject({ total: 3, valida: true });
 	});
 
-	it('apagar o local não apaga a batida: o vínculo vira null e a situação fica', async () => {
+	it('apagar o local com batidas é recusado: a batida guarda o vínculo com o local', async () => {
 		const empresa = await criarEmpresa();
 		const { usuario, colaborador } = await criarColaborador(empresa.id);
 		const local = await prisma.localTrabalho.create({
@@ -265,10 +273,11 @@ describe('geolocalização da batida', () => {
 			geo: avaliarPosicao({ latitude: -30.03, longitude: -51.22, precisao: 5 }, [local])
 		});
 
-		await prisma.localTrabalho.delete({ where: { id: local.id } });
+		// A FK é RESTRICT: o SET NULL de antes era um UPDATE na batida. A API desativa.
+		await expect(prisma.localTrabalho.delete({ where: { id: local.id } })).rejects.toThrow();
 
 		const depois = await prisma.registro.findUniqueOrThrow({ where: { id: r.id } });
-		expect(depois).toMatchObject({ localizacao: 'dentro', localTrabalhoId: null });
+		expect(depois).toMatchObject({ localizacao: 'dentro', localTrabalhoId: local.id });
 	});
 });
 

@@ -16,12 +16,44 @@ import { seedEmpresaImportada } from './seed-importada';
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+/**
+ * Tabelas com o trigger de somente inserção do diário do REP (migration
+ * `diario_somente_insercao`). O seed é o único que apaga: desliga os triggers só
+ * durante a limpeza (`DISABLE TRIGGER USER` exige ser o dono da tabela, como o
+ * usuário das migrations) e religa mesmo se a limpeza falhar.
+ */
+const TABELAS_DO_DIARIO = [
+	'registros',
+	'eventos_empregador',
+	'eventos_empregado',
+	'eventos_sensiveis',
+	'registro_anulacoes',
+	'registro_anulacoes_revertidas',
+	'empresas'
+];
+
+async function travasDoDiario(acao: 'ENABLE' | 'DISABLE') {
+	for (const tabela of TABELAS_DO_DIARIO) {
+		await prisma.$executeRawUnsafe(`ALTER TABLE "${tabela}" ${acao} TRIGGER USER`);
+	}
+}
+
 /** Limpa o banco respeitando as FKs (o que referencia sai antes do referenciado). */
 async function limpar() {
+	await travasDoDiario('DISABLE');
+	try {
+		await apagarTudo();
+	} finally {
+		await travasDoDiario('ENABLE');
+	}
+}
+
+async function apagarTudo() {
 	await prisma.ausencia.deleteMany();
 	await prisma.eventoEmpregado.deleteMany();
 	await prisma.eventoSensivel.deleteMany();
 	await prisma.eventoEmpregador.deleteMany();
+	await prisma.registroAnulacaoRevertida.deleteMany();
 	await prisma.registroAnulacao.deleteMany();
 	// Comprovante referencia a marcação com onDelete: Restrict — sai antes dela.
 	await prisma.comprovante.deleteMany();

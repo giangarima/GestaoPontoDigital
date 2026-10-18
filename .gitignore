@@ -55,3 +55,4 @@ certs/
 *.tsbuildinfo
 .vercel/
 .netlify/
+docs/*

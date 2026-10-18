@@ -43,7 +43,6 @@ model Empresa {
   eventosEmpregador EventoEmpregador[]
   eventosEmpregado  EventoEmpregado[]
   eventosSensiveis  EventoSensivel[]
-  nsrSequencia      EmpresaNsrSequencia?
   comprovantes      Comprovante[]
   feriados          Feriado[]
   locaisTrabalho    LocalTrabalho[]
@@ -71,10 +70,11 @@ model Usuario {
   colaborador Colaborador?
 
   // Back-relations dos campos de auditoria (quem fez a ação).
-  registrosCriados   Registro[]         @relation("registroCriadoPor")
-  anulacoes          RegistroAnulacao[] @relation("anulacaoAnuladoPor")
-  ausenciasRevisadas Ausencia[]         @relation("ausenciaRevisadoPor")
-  ajustesEscala      EscalaAjuste[]     @relation("escalaAjusteCriadoPor")
+  registrosCriados    Registro[]                  @relation("registroCriadoPor")
+  anulacoes           RegistroAnulacao[]          @relation("anulacaoAnuladoPor")
+  anulacoesRevertidas RegistroAnulacaoRevertida[] @relation("anulacaoRevertidaPor")
+  ausenciasRevisadas  Ausencia[]                  @relation("ausenciaRevisadoPor")
+  ajustesEscala       EscalaAjuste[]              @relation("escalaAjusteCriadoPor")
 
   @@unique([empresaId, email])
   @@unique([empresaId, cpf])
@@ -188,11 +188,12 @@ model Registro {
   hash          String?
   hashAnterior  String?     @map("hash_anterior")
 
-  criadoPor         String?           @map("criado_por")
-  criadoPorRef      Usuario?          @relation("registroCriadoPor", fields: [criadoPor], references: [id], onDelete: Restrict)
-  criadoMotivo      String?           @map("criado_motivo")
-  anulacao          RegistroAnulacao? @relation("registroAnulado")
-  substituiAnulacao RegistroAnulacao? @relation("registroSubstituto")
+  criadoPor           String?                     @map("criado_por")
+  criadoPorRef        Usuario?                    @relation("registroCriadoPor", fields: [criadoPor], references: [id], onDelete: Restrict)
+  criadoMotivo        String?                     @map("criado_motivo")
+  anulacao            RegistroAnulacao?           @relation("registroAnulado")
+  substituiAnulacao   RegistroAnulacao?           @relation("registroSubstituto")
+  anulacoesRevertidas RegistroAnulacaoRevertida[]
 
   comprovante Comprovante? @relation("registro_comprovante")
 
@@ -205,7 +206,7 @@ model Registro {
   precisaoM       Int?           @map("precisao_m")
   localizacao     String?
   localTrabalhoId String?        @map("local_trabalho_id")
-  localTrabalho   LocalTrabalho? @relation(fields: [localTrabalhoId], references: [id], onDelete: SetNull)
+  localTrabalho   LocalTrabalho? @relation(fields: [localTrabalhoId], references: [id], onDelete: Restrict)
   distanciaM      Int?           @map("distancia_m")
 
   @@unique([empresaId, nsr])
@@ -232,6 +233,28 @@ model RegistroAnulacao {
 
   @@index([empresaId])
   @@map("registro_anulacoes")
+}
+
+// Histórico das anulações avulsas revertidas. Reverter tira a linha de
+// `registro_anulacoes` (a batida volta a contar), mas antes a copia para cá: o
+// trigger `diario_somente_insercao` só deixa apagar uma anulação que já tenha a
+// cópia gravada. Append-only, como o resto do diário.
+model RegistroAnulacaoRevertida {
+  id              String   @id @default(cuid())
+  anulacaoId      String   @unique @map("anulacao_id") // id da linha que saiu de registro_anulacoes
+  registroId      String   @map("registro_id")
+  registro        Registro @relation(fields: [registroId], references: [id], onDelete: Restrict)
+  empresaId       String   @map("empresa_id")
+  motivo          String // motivo da anulação original
+  anuladoPor      String   @map("anulado_por")
+  anuladoEm       DateTime @map("anulado_em") @db.Timestamptz(6)
+  revertidoPor    String   @map("revertido_por")
+  revertidoPorRef Usuario  @relation("anulacaoRevertidaPor", fields: [revertidoPor], references: [id], onDelete: Restrict)
+  revertidoEm     DateTime @default(now()) @map("revertido_em") @db.Timestamptz(6)
+
+  @@index([registroId])
+  @@index([empresaId])
+  @@map("registro_anulacoes_revertidas")
 }
 
 // Evento de inclusão/alteração do empregador no REP (AFD tipo 2). Append-only:
@@ -290,14 +313,6 @@ model EventoSensivel {
   @@unique([empresaId, nsr])
   @@index([empresaId, nsr])
   @@map("eventos_sensiveis")
-}
-
-model EmpresaNsrSequencia {
-  empresaId  String  @id @map("empresa_id")
-  proximoNsr BigInt  @default(1) @map("proximo_nsr")
-  empresa    Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-
-  @@map("empresa_nsr_sequencias")
 }
 
 model Comprovante {

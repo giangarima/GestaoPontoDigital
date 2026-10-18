@@ -4,6 +4,7 @@
  */
 import { randomInt } from 'node:crypto';
 import { prisma } from '@/lib/server/db';
+import type { Prisma } from '@/lib/server/prisma-client/client';
 import { criarInclusao, criarRegistro, type NovoRegistroData } from '@/lib/server/registro-ledger';
 
 function digitos(n: number): string {
@@ -123,5 +124,19 @@ export async function vincularJornada(empresaId: string, colaboradorId: string) 
 	await prisma.colaborador.update({
 		where: { id: colaboradorId },
 		data: { jornadaId: jornada.id }
+	});
+}
+
+/**
+ * Adultera o diário direto no banco, como faria quem tem acesso a ele, para testar
+ * que a auditoria percebe. O trigger de somente inserção (migration
+ * `diario_somente_insercao`) recusaria: `session_replication_role = replica`
+ * desliga os triggers só dentro desta transação (o usuário do banco de teste é
+ * superusuário).
+ */
+export function adulterar<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+	return prisma.$transaction(async (tx) => {
+		await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+		return fn(tx);
 	});
 }

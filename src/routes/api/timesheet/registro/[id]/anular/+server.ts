@@ -68,7 +68,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
  * @description Admin reverte uma anulação avulsa, fazendo a batida original voltar a contar.
  *
  * Conformidade Portaria 671/2021: a batida original nunca foi tocada — apenas
- * remove-se a marca de tratamento (RegistroAnulacao). Restrito a anulações
+ * sai a marca de tratamento (RegistroAnulacao), copiada antes para
+ * `registro_anulacoes_revertidas` com quem reverteu: o trigger do diário só deixa
+ * apagar a anulação que já tem essa cópia, e o histórico não se perde. Restrito a anulações
  * avulsas (`registroSubstitutoId` nulo): reverter um ajuste deixaria a original
  * e a substituta contando ao mesmo tempo (batida duplicada).
  */
@@ -98,7 +100,21 @@ export const DELETE: RequestHandler = async ({ request, params }) => {
 		return jsonError('Não é possível reverter um ajuste; refaça o ajuste', 409);
 	}
 
-	await prisma.registroAnulacao.delete({ where: { id: registro.anulacao.id } });
+	const anulacao = registro.anulacao;
+	await prisma.$transaction([
+		prisma.registroAnulacaoRevertida.create({
+			data: {
+				anulacaoId: anulacao.id,
+				registroId: anulacao.registroId,
+				empresaId: anulacao.empresaId,
+				motivo: anulacao.motivo,
+				anuladoPor: anulacao.anuladoPor,
+				anuladoEm: anulacao.anuladoEm,
+				revertidoPor: admin.id
+			}
+		}),
+		prisma.registroAnulacao.delete({ where: { id: anulacao.id } })
+	]);
 
 	const atualizado = await prisma.registro.findUnique({
 		where: { id: registroId },

@@ -13,7 +13,7 @@ import {
 } from '@/lib/server/disponibilidade';
 import { gerarAfd } from '@/lib/server/afd/gerar';
 import { auditarEmpresa } from '@/lib/server/auditoria';
-import { baterPonto, criarColaborador, criarEmpresa } from './fixtures';
+import { baterPonto, criarColaborador, criarEmpresa, adulterar } from './fixtures';
 
 async function eventos(empresaId: string) {
 	const rows = await prisma.eventoSensivel.findMany({
@@ -106,7 +106,9 @@ describe('tipo 6 no AFD e na auditoria', () => {
 
 		expect((await auditarEmpresa(empresa.id)).sequencia.totalAusentes).toBe(0);
 
-		await prisma.$executeRaw`DELETE FROM eventos_sensiveis WHERE empresa_id = ${empresa.id}`;
+		await adulterar(
+			(tx) => tx.$executeRaw`DELETE FROM eventos_sensiveis WHERE empresa_id = ${empresa.id}`
+		);
 		const depois = await auditarEmpresa(empresa.id);
 		expect(depois.sequencia.ausentes).toEqual(['1']);
 	});

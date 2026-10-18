@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/server/db';
 import { auditarEmpresa } from '@/lib/server/auditoria';
 import { verificarCadeia, registrarEventoEmpregado } from '@/lib/server/registro-ledger';
-import { baterPonto, criarColaborador, criarEmpresa } from './fixtures';
+import { baterPonto, criarColaborador, criarEmpresa, adulterar } from './fixtures';
 
 async function empresaComBatidas(n: number) {
 	const empresa = await criarEmpresa();
@@ -41,9 +41,11 @@ describe('auditarEmpresa', () => {
 
 	it('batida alterada: aponta a quebra com os dados da batida', async () => {
 		const { empresa } = await empresaComBatidas(4);
-		await prisma.$executeRaw`
+		await adulterar(
+			(tx) => tx.$executeRaw`
 			UPDATE registros SET marcado_em = marcado_em + interval '2 hours'
-			WHERE empresa_id = ${empresa.id} AND nsr = 2`;
+			WHERE empresa_id = ${empresa.id} AND nsr = 2`
+		);
 
 		const r = await auditarEmpresa(empresa.id);
 		expect(r.integra).toBe(false);
@@ -54,7 +56,9 @@ describe('auditarEmpresa', () => {
 
 	it('exclusão da ÚLTIMA batida: a cadeia não percebe, a sequência de NSR sim', async () => {
 		const { empresa } = await empresaComBatidas(5);
-		await prisma.$executeRaw`DELETE FROM registros WHERE empresa_id = ${empresa.id} AND nsr = 5`;
+		await adulterar(
+			(tx) => tx.$executeRaw`DELETE FROM registros WHERE empresa_id = ${empresa.id} AND nsr = 5`
+		);
 
 		// A hash-chain sozinha continua "válida": nenhum elo aponta para a batida 5.
 		expect((await verificarCadeia(empresa.id)).valida).toBe(true);
@@ -77,7 +81,7 @@ describe('auditarEmpresa', () => {
 			})
 		);
 		await baterPonto(empresa.id, colab.colaborador.id, colab.usuario.cpf);
-		await prisma.eventoEmpregado.delete({ where: { id: evento.id } });
+		await adulterar((tx) => tx.eventoEmpregado.delete({ where: { id: evento.id } }));
 
 		const r = await auditarEmpresa(empresa.id);
 		expect(r.cadeia.valida).toBe(true);
@@ -87,7 +91,10 @@ describe('auditarEmpresa', () => {
 
 	it('exclusão no meio: quebra na cadeia e buraco na sequência', async () => {
 		const { empresa } = await empresaComBatidas(5);
-		await prisma.$executeRaw`DELETE FROM registros WHERE empresa_id = ${empresa.id} AND nsr IN (2, 3)`;
+		await adulterar(
+			(tx) =>
+				tx.$executeRaw`DELETE FROM registros WHERE empresa_id = ${empresa.id} AND nsr IN (2, 3)`
+		);
 
 		const r = await auditarEmpresa(empresa.id);
 		expect(r.integra).toBe(false);

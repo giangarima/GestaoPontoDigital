@@ -35,7 +35,7 @@ Projeto desenvolvido para a disciplina de **Projeto de Desenvolvimento I** da **
 
 1. **Planilhas Manuais:** O controle manual é lento, suscetível a erros de digitação e dificulta auditorias. Digitalizamos e automatizamos para garantir integridade e rastreabilidade.
 2. **Falta de Visibilidade:** Gestores só descobrem atrasos e faltas dias depois. Nosso dashboard em tempo real permite ações imediatas baseadas em dados.
-3. **Risco de Não Conformidade Legal:** A legislação (CLT e Portaria 671/MTE) exige registros auditáveis. Registramos os dados com timestamp do servidor para garantir segurança jurídica.
+3. **Risco de Não Conformidade Legal:** A legislação (CLT e Portaria 671/MTE) exige registros auditáveis. Registramos os dados com timestamp do servidor para garantir segurança jurídica. Como cada requisito da Portaria é atendido (e o que ainda falta) está em [docs/PORTARIA-671.md](docs/PORTARIA-671.md).
 4. **Custo Elevado de Equipamentos:** Relógios eletrônicos (REP) possuem alto custo de aquisição e manutenção. Nossa solução funciona via web, eliminando a necessidade de hardware dedicado.
 
 ---
