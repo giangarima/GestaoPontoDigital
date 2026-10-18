@@ -12,6 +12,7 @@
 	import Card from '@/components/ui/Card.svelte';
 	import ApprovalCard from '@/components/ApprovalCard.svelte';
 	import Paginacao from '@/components/ui/Paginacao.svelte';
+	import { recarregarResumo } from '@/store/resumo.store';
 
 	type StatusVariant = 'success' | 'warning' | 'danger' | 'neutral';
 
@@ -175,7 +176,7 @@
 	async function aprovar(id: string) {
 		try {
 			await justificativaService.approve(id);
-			await carregar();
+			await Promise.all([carregar(), recarregarResumo()]);
 		} catch {
 			errorMsg = 'Erro ao aprovar justificativa.';
 		}
@@ -184,7 +185,7 @@
 	async function rejeitar(id: string) {
 		try {
 			await justificativaService.reject(id);
-			await carregar();
+			await Promise.all([carregar(), recarregarResumo()]);
 		} catch {
 			errorMsg = 'Erro ao rejeitar justificativa.';
 		}
@@ -214,6 +215,13 @@
 			month: 'long',
 			timeZone: 'UTC'
 		});
+	}
+
+	/** "Terça-feira, 18 de agosto a sábado, 29 de agosto": maiúscula só no início. */
+	function fmtPeriodoLongo(j: Justificativa): string {
+		const unico = !j.dataFim || j.dataFim.slice(0, 10) === j.data.slice(0, 10);
+		const texto = unico ? fmtLonga(j.data) : `${fmtLonga(j.data)} a ${fmtLonga(j.dataFim!)}`;
+		return texto.charAt(0).toUpperCase() + texto.slice(1);
 	}
 
 	function fmtPeriodo(j: Justificativa): string {
@@ -365,10 +373,7 @@
 					{#snippet details()}
 						<div class="row">
 							<span class="row__label">Data</span>
-							<span class="row__val">
-								{fmtLonga(j.data)}{#if j.dataFim && j.dataFim.slice(0, 10) !== j.data.slice(0, 10)}
-									a {fmtLonga(j.dataFim)}{/if}
-							</span>
+							<span class="row__val row__val--frase">{fmtPeriodoLongo(j)}</span>
 						</div>
 						<div class="row column">
 							<span class="row__label">Motivo</span>
@@ -604,6 +609,9 @@
 		color: var(--color-text);
 		font-weight: 500;
 		text-transform: capitalize;
+	}
+	.row__val--frase {
+		text-transform: none;
 	}
 
 	.row__motivo {

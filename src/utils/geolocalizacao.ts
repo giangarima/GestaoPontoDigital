@@ -13,17 +13,27 @@ export interface PosicaoDispositivo {
 	precisao: number;
 }
 
+/**
+ * O `timeout` da API só conta depois que o navegador obtém a permissão: com o pedido
+ * de permissão aberto, a batida ficava esperando a pessoa responder. Por isso há um
+ * relógio próprio, que vale desde a chamada.
+ */
 export function obterPosicao(timeoutMs = 8000): Promise<PosicaoDispositivo | null> {
 	if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null);
 	return new Promise((resolve) => {
+		const limite = setTimeout(() => resolve(null), timeoutMs);
+		const fim = (p: PosicaoDispositivo | null) => {
+			clearTimeout(limite);
+			resolve(p);
+		};
 		navigator.geolocation.getCurrentPosition(
 			(p) =>
-				resolve({
+				fim({
 					latitude: p.coords.latitude,
 					longitude: p.coords.longitude,
 					precisao: p.coords.accuracy
 				}),
-			() => resolve(null),
+			() => fim(null),
 			{ enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs }
 		);
 	});

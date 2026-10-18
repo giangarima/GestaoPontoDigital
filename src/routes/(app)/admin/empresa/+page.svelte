@@ -4,10 +4,8 @@
   locais de trabalho (conferência da geolocalização da batida).
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { empresaService, type Empresa, type RegimeBanco } from '@/services/empresa.service';
 	import { user as userStore } from '@/store/auth.store';
-	import { get } from 'svelte/store';
 	import Button from '@/components/ui/Button.svelte';
 	import LocaisTrabalho from '@/components/empresa/LocaisTrabalho.svelte';
 
@@ -53,10 +51,8 @@
 		}
 	}
 
-	async function loadEmpresa() {
-		const user = get(userStore);
-		if (!user) return;
-		empresa = await empresaService.get(user.empresaId);
+	async function loadEmpresa(empresaId: string) {
+		empresa = await empresaService.get(empresaId);
 		form = {
 			nome: empresa.nome,
 			cnpj: empresa.cnpj ?? '',
@@ -94,7 +90,14 @@
 		}
 	}
 
-	onMount(loadEmpresa);
+	// No recarregamento o layout hidrata o usuário depois do mount: esperar o store.
+	let carregadaPara: string | null = null;
+	$effect(() => {
+		const empresaId = $userStore?.empresaId;
+		if (!empresaId || carregadaPara === empresaId) return;
+		carregadaPara = empresaId;
+		loadEmpresa(empresaId);
+	});
 </script>
 
 <svelte:head><title>Empresa — Admin</title></svelte:head>

@@ -100,6 +100,14 @@ describe('desviosDoDia', () => {
 	const previstas = PADRAO.map((h) => brt(`2026-01-05T${h}`));
 	const em = (horas: string[]) => horas.map((h) => brt(`2026-01-05T${h}`));
 
+	it('batida única perto da saída: não é atraso na entrada', () => {
+		const d = desviosDoDia(em(['17:04']), previstas);
+		expect(d.entradaMin).toBeNull();
+		expect(d.atrasoEntrada).toBe(false);
+		// Perto da entrada continua sendo a entrada.
+		expect(desviosDoDia(em(['08:30']), previstas).atrasoEntrada).toBe(true);
+	});
+
 	it('dia pontual: tudo zero, nenhum alerta', () => {
 		expect(desviosDoDia(em(PADRAO), previstas)).toEqual({
 			entradaMin: 0,

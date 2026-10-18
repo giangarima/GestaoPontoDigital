@@ -32,10 +32,11 @@
 
 	const blocos = $derived<Bloco[]>(
 		rotulos.map((rotulo, i) => {
-			const m = d.marcacoes[i] ?? null;
+			const ultimo = i === rotulos.length - 1;
+			// Só a saída batida: ela vai para o último bloco, os outros ficam vazios.
+			const m = d.soSaida ? (ultimo ? d.marcacoes[0] : null) : (d.marcacoes[i] ?? null);
 			const previsto = d.previstas[i] ?? null;
 			const base = { rotulo, hora: m?.hora ?? null, incluida: m?.incluida ?? false };
-			const ultimo = i === rotulos.length - 1;
 
 			if (i === 0 && d.desvios.atrasoEntrada)
 				return {

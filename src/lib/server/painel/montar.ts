@@ -35,6 +35,19 @@ export const ATRASO_MIN = 5;
  */
 export const MARGEM_FALTA_MIN = 60;
 
+/**
+ * Batida única mais perto da última prevista que da primeira: é a saída de quem
+ * esqueceu a entrada, não uma entrada com horas de atraso. Medir o atraso dela
+ * contra a entrada prevista acusava "+9h34" por uma batida às 19:04.
+ */
+export function batidaUnicaDeSaida(validas: Date[], previstas: Date[] | null): boolean {
+	if (validas.length !== 1 || !previstas || previstas.length < 2) return false;
+	const t = validas[0].getTime();
+	return (
+		Math.abs(t - previstas[previstas.length - 1].getTime()) < Math.abs(t - previstas[0].getTime())
+	);
+}
+
 /** Até esta duração o dia é considerado meio período, para o rótulo de turno. */
 const MEIO_PERIODO_MAX_MIN = 6 * 60;
 
@@ -236,7 +249,9 @@ export function montarLinha(
 	const previstoMin = previstas ? minutosDoDia(previstas[0]) : null;
 	let diferencaMin: number | null = null;
 	if (previstoMin !== null && n > 0) {
-		diferencaMin = minutosDoDia(validas[0]) - previstoMin;
+		// Batida única perto da saída: sem entrada, não há atraso a medir.
+		if (!batidaUnicaDeSaida(validas, previstas))
+			diferencaMin = minutosDoDia(validas[0]) - previstoMin;
 	} else if (previstoMin !== null && ehHoje) {
 		// Ainda sem bater: a diferença é o tempo já decorrido desde a hora prevista.
 		const decorrido = minutosDoDia(agora) - previstoMin;

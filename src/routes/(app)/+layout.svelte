@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { get } from 'svelte/store';
 	import type { Snippet } from 'svelte';
 	import AppShell from '@/components/layout/AppShell.svelte';
@@ -15,10 +16,12 @@
 	}
 	let { children }: Props = $props();
 
-	onMount(() => {
-		hydrateFromStorage();
-		// Contadores dos badges do menu. Só para admin: o endpoint é restrito, e
-		// um colaborador tomaria 403 a cada navegação.
+	onMount(hydrateFromStorage);
+
+	// Contadores dos badges do menu, a cada navegação (a primeira inclusive): é uma
+	// agregação SQL, barata. Só para admin: o endpoint é restrito, e um colaborador
+	// tomaria 403. As telas que tratam os itens também recarregam ao agir.
+	afterNavigate(() => {
 		if (get(isAdmin)) recarregarResumo();
 	});
 </script>

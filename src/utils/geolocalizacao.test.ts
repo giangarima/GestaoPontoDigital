@@ -1,5 +1,27 @@
-import { describe, expect, it } from 'vitest';
-import { descreverLocalizacao, formatDistancia, lerCoordenadas, linkMapa } from './geolocalizacao';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+	descreverLocalizacao,
+	formatDistancia,
+	lerCoordenadas,
+	linkMapa,
+	obterPosicao
+} from './geolocalizacao';
+
+describe('obterPosicao', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+
+	it('pedido de permissão sem resposta: desiste no prazo e a batida segue sem posição', async () => {
+		vi.useFakeTimers();
+		// Navegador que nunca chama de volta (permissão pendente).
+		vi.stubGlobal('navigator', { geolocation: { getCurrentPosition: () => {} } });
+		const p = obterPosicao(8000);
+		vi.advanceTimersByTime(8000);
+		await expect(p).resolves.toBeNull();
+	});
+});
 
 describe('formatDistancia', () => {
 	it('metros abaixo de 1 km, km com uma casa acima', () => {

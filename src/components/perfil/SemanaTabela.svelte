@@ -36,7 +36,11 @@
 	function celulas(d: DiaDetalhe): Celula[] {
 		const vazia: Celula = { hora: null, incluida: false, nota: '', tom: null };
 		const cols: Celula[] = [0, 1, 2, 3].map(() => ({ ...vazia }));
-		const posicoes = d.previstas.length === 2 && d.marcacoes.length <= 2 ? [0, 3] : [0, 1, 2, 3];
+		const posicoes = d.soSaida
+			? [3]
+			: d.previstas.length === 2 && d.marcacoes.length <= 2
+				? [0, 3]
+				: [0, 1, 2, 3];
 		d.marcacoes.slice(0, 4).forEach((m, i) => {
 			const col = posicoes[i];
 			if (col !== undefined)

@@ -122,6 +122,13 @@ describe('montarLinha — dia encerrado', () => {
 		expect(l.divergencia).toBe(true);
 	});
 
+	it('batida única perto da saída é entrada esquecida, não atraso de horas', () => {
+		const l = linha({ marcacoes: [brt(`${TERCA}T17:04`)] }, TERCA, '2026-03-04T09:00');
+		expect(l.diferencaMin).toBeNull();
+		expect(l.atrasado).toBe(false);
+		expect(l.diaEmAberto).toBe(true);
+	});
+
 	it('sem marcação em dia útil encerrado é falta provável', () => {
 		const l = linha({}, TERCA, '2026-03-04T09:00');
 		expect(l.situacao).toBe('falta_provavel');

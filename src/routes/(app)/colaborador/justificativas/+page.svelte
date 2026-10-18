@@ -96,8 +96,9 @@
 		}
 	}
 
+	// Data pura gravada à meia-noite UTC: formatar em UTC, senão Brasília mostra o dia anterior.
 	function fmt(iso: string) {
-		return new Date(iso).toLocaleDateString('pt-BR');
+		return new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 	}
 
 	function abrirAnexo(url: string) {

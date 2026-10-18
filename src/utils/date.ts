@@ -45,12 +45,13 @@ export function formatTime(date: Date | string): string {
 	}).format(new Date(date));
 }
 
-/** "08h 32min" */
+/** "8h 32min"; abaixo de uma hora, só os minutos ("-55min", não "-0h 55min"). */
 export function formatHoursMinutes(totalMinutes: number): string {
 	const totalAbs = Math.round(Math.abs(totalMinutes));
 	const h = Math.floor(totalAbs / 60);
 	const m = totalAbs % 60;
-	const sign = totalMinutes < 0 ? '-' : '';
+	const sign = totalMinutes < 0 && totalAbs > 0 ? '-' : '';
+	if (h === 0) return `${sign}${m}min`;
 	return `${sign}${h}h ${String(m).padStart(2, '0')}min`;
 }
 

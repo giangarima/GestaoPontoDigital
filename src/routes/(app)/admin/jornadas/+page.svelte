@@ -16,11 +16,21 @@
 	];
 
 	// ── Helpers ────────────────────────────────────────────────
+	/** Minutos entre dois "HH:MM"; 0 se faltar um deles (dia sem intervalo). */
 	function calcMinutes(start: string, end: string): number {
+		if (!start || !end) return 0;
 		const [sh, sm] = start.split(':').map(Number);
 		const [eh, em] = end.split(':').map(Number);
 		return eh * 60 + em - (sh * 60 + sm);
 	}
+
+	type Horario = { entrada: string; saida_almoco: string; retorno_almoco: string; saida: string };
+
+	/** Meio período: sem saída e retorno do intervalo (só entrada e saída). */
+	const semIntervalo = (h: Horario) => !h.saida_almoco && !h.retorno_almoco;
+
+	const minutosTrabalhados = (h: Horario) =>
+		calcMinutes(h.entrada, h.saida) - calcMinutes(h.saida_almoco, h.retorno_almoco);
 
 	function formatMinutes(minutes: number): string {
 		const h = Math.floor(minutes / 60);
@@ -88,12 +98,7 @@
 	let jornadasComCalculo = $derived.by(() =>
 		jornadas.map((j) => {
 			const diasAtivos = DIAS_CONFIG.filter((d) => j.dias[d.key].ativo);
-			const minutosPorDia = diasAtivos.map((d) => {
-				const dia = j.dias[d.key];
-				return (
-					calcMinutes(dia.entrada, dia.saida) - calcMinutes(dia.saida_almoco, dia.retorno_almoco)
-				);
-			});
+			const minutosPorDia = diasAtivos.map((d) => minutosTrabalhados(j.dias[d.key]));
 			const totalSemana = minutosPorDia.reduce((a, b) => a + b, 0);
 			// Menor data de vigência futura (versão agendada que ainda não vale hoje).
 			const hoje = hojeStr();
@@ -108,25 +113,29 @@
 	let previewUnico = $derived.by(() => {
 		if (!mesmoHorario) return null;
 		const h = horarioUnico;
-		if (!h.entrada || !h.saida_almoco || !h.retorno_almoco || !h.saida) return null;
-		const total = calcMinutes(h.entrada, h.saida) - calcMinutes(h.saida_almoco, h.retorno_almoco);
+		if (!h.entrada || !h.saida || (!semIntervalo(h) && (!h.saida_almoco || !h.retorno_almoco)))
+			return null;
+		const total = minutosTrabalhados(h);
 		const almoco = calcMinutes(h.saida_almoco, h.retorno_almoco);
-		if (total <= 0 || almoco <= 0) return null;
+		if (total <= 0 || almoco < 0) return null;
 		return { total, almoco };
 	});
 
 	// ── Validação ──────────────────────────────────────────────
-	function validarHorarioDia(
-		h: { entrada: string; saida_almoco: string; retorno_almoco: string; saida: string },
-		prefix: string
-	): Record<string, string> {
+	function validarHorarioDia(h: Horario, prefix: string): Record<string, string> {
 		const e: Record<string, string> = {};
 		if (!h.entrada) e[`${prefix}_entrada`] = 'Obrigatório';
-		if (!h.saida_almoco) e[`${prefix}_saida_almoco`] = 'Obrigatório';
-		if (!h.retorno_almoco) e[`${prefix}_retorno_almoco`] = 'Obrigatório';
 		if (!h.saida) e[`${prefix}_saida`] = 'Obrigatório';
+		// O intervalo é opcional (meio período), mas vem inteiro: saída e retorno.
+		if (!semIntervalo(h)) {
+			if (!h.saida_almoco) e[`${prefix}_saida_almoco`] = 'Informe a saída ou deixe os dois vazios';
+			if (!h.retorno_almoco)
+				e[`${prefix}_retorno_almoco`] = 'Informe o retorno ou deixe os dois vazios';
+		}
 
-		if (h.entrada && h.saida_almoco && h.retorno_almoco && h.saida) {
+		if (h.entrada && h.saida && semIntervalo(h)) {
+			if (h.entrada >= h.saida) e[`${prefix}_saida`] = 'Deve ser depois da entrada';
+		} else if (h.entrada && h.saida_almoco && h.retorno_almoco && h.saida) {
 			const toMin = (t: string) => {
 				const [hh, mm] = t.split(':').map(Number);
 				return hh * 60 + mm;
@@ -347,16 +356,15 @@
 								<span class="dia-row__abrev">{d.abrev}</span>
 								{#if diaInfo.ativo}
 									<span class="dia-row__horario">
-										{diaInfo.entrada}–{diaInfo.saida_almoco}
-										<span class="dia-row__sep">|</span>
-										{diaInfo.retorno_almoco}–{diaInfo.saida}
+										{#if semIntervalo(diaInfo)}
+											{diaInfo.entrada}–{diaInfo.saida}
+										{:else}
+											{diaInfo.entrada}–{diaInfo.saida_almoco}
+											<span class="dia-row__sep">|</span>
+											{diaInfo.retorno_almoco}–{diaInfo.saida}
+										{/if}
 									</span>
-									<span class="dia-row__total">
-										{formatMinutes(
-											calcMinutes(diaInfo.entrada, diaInfo.saida) -
-												calcMinutes(diaInfo.saida_almoco, diaInfo.retorno_almoco)
-										)}
-									</span>
+									<span class="dia-row__total">{formatMinutes(minutosTrabalhados(diaInfo))}</span>
 								{:else}
 									<span class="dia-row__folga-label">Folga</span>
 								{/if}
@@ -475,7 +483,13 @@
 						{#if previewUnico}
 							<div class="preview-bar">
 								<span>Total: <strong>{formatMinutes(previewUnico.total)}</strong></span>
-								<span>Almoço: <strong>{formatMinutes(previewUnico.almoco)}</strong></span>
+								<span
+									>Almoço: <strong
+										>{previewUnico.almoco > 0
+											? formatMinutes(previewUnico.almoco)
+											: 'sem intervalo'}</strong
+									></span
+								>
 							</div>
 						{/if}
 					</div>

@@ -21,7 +21,7 @@
  */
 import { somarDias } from '@/lib/server/feriado/calendario';
 import { marcacoesPrevistas } from '@/lib/server/jornada';
-import { ATRASO_MIN, MARGEM_FALTA_MIN } from '@/lib/server/painel/montar';
+import { ATRASO_MIN, batidaUnicaDeSaida, MARGEM_FALTA_MIN } from '@/lib/server/painel/montar';
 import { dataPura, diaDe, minutosDoDia, type Dia } from '@/lib/server/periodo';
 import type { DiaEspelho, HorarioEspelho } from '@/lib/server/espelho/montar';
 import { formatMinutos } from '@/utils/perfil';
@@ -91,6 +91,8 @@ export function desviosDoDia(validas: Date[], previstas: Date[] | null): Desvios
 		intervaloCurto: false
 	};
 	if (!previstas || previstas.length === 0 || validas.length === 0) return d;
+	// Só a saída foi batida (entrada esquecida): nada a dizer sobre a entrada.
+	if (batidaUnicaDeSaida(validas, previstas)) return d;
 
 	d.entradaMin = minutosEntre(previstas[0], validas[0]);
 	if (validas.length % 2 === 0) {
@@ -141,6 +143,8 @@ export interface DiaDetalhe {
 	previstas: string[];
 	/** Marcações válidas (desconsideradas saem), em ordem. */
 	marcacoes: MarcacaoDetalhe[];
+	/** A única marcação do dia é a saída (entrada esquecida): exibir na coluna de saída. */
+	soSaida: boolean;
 	desvios: DesviosDia;
 	/** Houve inclusão ou desconsideração do admin no dia. */
 	ajuste: boolean;
@@ -183,6 +187,10 @@ export function detalharDia(d: DiaEspelho, horarios: HorarioEspelho[], hoje: Dia
 		feriado: d.feriado?.nome ?? null,
 		previstas: (previstas ?? []).map(hhmm),
 		marcacoes: validas.map((m) => ({ hora: hhmm(m.marcadoEm), incluida: m.fonte === 'I' })),
+		soSaida: batidaUnicaDeSaida(
+			validas.map((m) => m.marcadoEm),
+			previstas
+		),
 		desvios: desviosDoDia(
 			validas.map((m) => m.marcadoEm),
 			previstas

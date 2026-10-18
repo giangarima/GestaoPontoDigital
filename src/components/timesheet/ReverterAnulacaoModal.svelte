@@ -3,8 +3,8 @@
   @description Confirmação para reverter uma anulação avulsa de batida.
 
   Conformidade Portaria 671: a batida original nunca foi tocada — reverter
-  apenas remove a marca de tratamento (RegistroAnulacao) e a batida volta a
-  contar no espelho. Aplica-se só a anulações avulsas (sem substituta).
+  arquiva a marca de tratamento (RegistroAnulacao → RegistroAnulacaoRevertida)
+  e a batida volta a contar no espelho. Aplica-se só a anulações avulsas (sem substituta).
 -->
 <script lang="ts">
 	import type { RegistroRecord } from '@/services/timesheet.service';
@@ -62,8 +62,8 @@
 
 				<div class="modal-body">
 					<p class="aviso">
-						A batida volta a contar no espelho. A marcação original nunca foi alterada — apenas a
-						anulação é removida.
+						A batida volta a contar no espelho. A marcação original nunca foi alterada, e a anulação
+						revertida fica guardada no histórico do diário.
 					</p>
 
 					<dl class="info">

@@ -126,7 +126,9 @@ AFDT não permite inferir rodízio de folga com segurança.
 
 **Depois de 19/09/2026** (`prisma/seed-extensao.ts`): do dia seguinte ao último real até o
 instante em que o seed roda, cada dia é a **cópia de um dia real do mesmo colaborador, no mesmo
-dia da semana** (horários, inclusões com motivo, desconsideradas e batida esquecida vêm juntos), e a
+dia da semana** (horários, inclusões com motivo, desconsideradas e batida esquecida vêm juntos), tirada
+sem reposição (um dia só volta depois de todos os outros; com menos de 3 dias reais naquele dia da
+semana, entram também os dos colegas da mesma jornada), e a
 falta segue a taxa da própria pessoa no período real. Ficam de fora desligados, dias sem expediente
 na jornada, feriados nacionais (12/10) e dias de ausência já cadastrada; ausências novas não se
 inventam. O sorteio é determinístico por colaborador e dia, então rodar de novo reproduz os mesmos

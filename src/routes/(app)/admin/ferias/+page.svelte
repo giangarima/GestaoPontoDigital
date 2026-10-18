@@ -58,15 +58,21 @@
 		await carregar();
 	}
 
+	// Data pura gravada à meia-noite UTC: formatar em UTC, senão Brasília mostra o dia anterior.
 	function fmtCurta(iso: string): string {
-		return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+		return new Date(iso).toLocaleDateString('pt-BR', {
+			day: '2-digit',
+			month: 'short',
+			timeZone: 'UTC'
+		});
 	}
 
 	function fmtLonga(iso: string): string {
 		return new Date(iso).toLocaleDateString('pt-BR', {
 			day: '2-digit',
 			month: 'long',
-			year: 'numeric'
+			year: 'numeric',
+			timeZone: 'UTC'
 		});
 	}
 

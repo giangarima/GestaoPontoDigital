@@ -2,7 +2,8 @@
   @component EspelhoMensal
   @description Grid mensal de batidas para um colaborador.
 
-  Cada linha = um dia do mês. Colunas = Entrada / Saída Almoço / Retorno / Saída / Total.
+  Cada linha = um dia do mês. Colunas = as batidas na ordem (Entrada 1, Saída 1, …; quantas o
+  dia mais cheio pedir) e o Total — a posição, não o `type` gravado, como na apuração.
   Por padrão é somente leitura (espelho). Com `editavel`, vira ferramenta de ajuste:
   click em célula vazia → registrar batida manual; click em batida → ajustar/anular
   (Portaria 671: a original nunca é editada — ajustar cria a corrigida vinculada).
@@ -19,9 +20,17 @@
 	import RegistroAjusteModal from './RegistroAjusteModal.svelte';
 	import ReverterAnulacaoModal from './ReverterAnulacaoModal.svelte';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { recarregarResumo } from '@/store/resumo.store';
 	import Icon from '@/components/ui/Icon.svelte';
 	import { descreverLocalizacao, linkMapa } from '@/utils/geolocalizacao';
 	import { ROTULO_TIPO, type FeriadoDoDia } from '@/services/feriado.service';
+	import {
+		celulasComAjustes,
+		celulasOriginais,
+		rotuloColuna,
+		totalDeColunas,
+		type Celula
+	} from '@/utils/espelho-colunas';
 
 	interface Props {
 		colaboradorId: string;
@@ -35,12 +44,9 @@
 	let { colaboradorId, colaboradorNome, mes, editavel = false }: Props = $props();
 
 	const TIPOS_ORDEM: RegistroType[] = ['entrada', 'saida_almoco', 'retorno_almoco', 'saida'];
-	const TIPO_LABEL: Record<RegistroType, string> = {
-		entrada: 'Entrada 1',
-		saida_almoco: 'Saída 1',
-		retorno_almoco: 'Entrada 2',
-		saida: 'Saída 2'
-	};
+	/** Rótulo gravado na batida incluída na posição `i` (a apuração só olha a ordem). */
+	const tipoDaPosicao = (i: number): RegistroType =>
+		TIPOS_ORDEM[i] ?? (i % 2 === 0 ? 'entrada' : 'saida');
 	const DIA_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 	let espelho = $state<EspelhoRelatorio | null>(null);
@@ -127,24 +133,11 @@
 		}
 	});
 
-	/** Estado efetivo (com ajustes do admin): primeira não-anulada do tipo; se todas anuladas, a última anulada. */
-	function batidaDoDia(summary: EspelhoDia | null, tipo: RegistroType): RegistroRecord | null {
-		if (!summary) return null;
-		const validas = summary.registros.filter((p) => p.type === tipo && !p.anulacao);
-		if (validas.length > 0) return validas[0];
-		const anuladas = summary.registros.filter((p) => p.type === tipo && p.anulacao);
-		return anuladas[anuladas.length - 1] ?? null;
-	}
-
-	/** Marcação original do colaborador (createdBy == null), mesmo que depois ajustada/anulada. */
-	function batidaOriginalDoDia(
-		summary: EspelhoDia | null,
-		tipo: RegistroType
-	): RegistroRecord | null {
-		if (!summary) return null;
-		const marcadas = summary.registros.filter((p) => p.type === tipo && p.createdBy == null);
-		return marcadas[0] ?? null;
-	}
+	type Celulas = (s: EspelhoDia | null) => Celula<RegistroRecord>[];
+	/** Estado efetivo (com ajustes do admin): válidas em ordem, desconsideradas junto. */
+	const celulasDoDia: Celulas = (s) => (s ? celulasComAjustes(s.registros) : []);
+	/** Marcações originais do colaborador (createdBy == null), mesmo que depois ajustadas/anuladas. */
+	const originaisDoDia: Celulas = (s) => (s ? celulasOriginais(s.registros) : []);
 
 	function formatHora(iso: string): string {
 		return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -162,16 +155,11 @@
 		return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 	}
 
-	function abrirModalManual(date: string, tipo: RegistroType) {
-		// Pré-preenche com horário sugerido por tipo
-		const horarioPadrao: Record<RegistroType, string> = {
-			entrada: '08:00',
-			saida_almoco: '12:00',
-			retorno_almoco: '13:00',
-			saida: '17:00'
-		};
-		dataInicialModal = `${date}T${horarioPadrao[tipo]}`;
-		tipoInicialModal = tipo;
+	function abrirModalManual(date: string, posicao: number) {
+		// Pré-preenche com horário sugerido pela posição
+		const horarioPadrao = ['08:00', '12:00', '13:00', '17:00'];
+		dataInicialModal = `${date}T${horarioPadrao[posicao] ?? '18:00'}`;
+		tipoInicialModal = tipoDaPosicao(posicao);
 		modalManualAberto = true;
 	}
 
@@ -196,7 +184,8 @@
 	async function confirmarManual(dados: { type: RegistroType; timestamp: string; reason: string }) {
 		await registroAdminService.criarManual({ colaboradorId, ...dados });
 		modalManualAberto = false;
-		await carregar();
+		// Incluir ou desconsiderar muda os dias em aberto do badge do menu.
+		await Promise.all([carregar(), recarregarResumo()]);
 	}
 
 	async function confirmarAjuste(dados: { type: RegistroType; timestamp: string; reason: string }) {
@@ -204,7 +193,8 @@
 		await registroAdminService.ajustar(registroSelecionado.id, dados);
 		modalAjusteAberto = false;
 		registroSelecionado = null;
-		await carregar();
+		// Incluir ou desconsiderar muda os dias em aberto do badge do menu.
+		await Promise.all([carregar(), recarregarResumo()]);
 	}
 
 	async function confirmarAnular(motivo: string) {
@@ -212,7 +202,8 @@
 		await registroAdminService.anular(registroSelecionado.id, motivo);
 		modalAjusteAberto = false;
 		registroSelecionado = null;
-		await carregar();
+		// Incluir ou desconsiderar muda os dias em aberto do badge do menu.
+		await Promise.all([carregar(), recarregarResumo()]);
 	}
 
 	async function confirmarReverter() {
@@ -220,7 +211,8 @@
 		await registroAdminService.reverterAnulacao(registroSelecionado.id);
 		modalReverterAberto = false;
 		registroSelecionado = null;
-		await carregar();
+		// Incluir ou desconsiderar muda os dias em aberto do badge do menu.
+		await Promise.all([carregar(), recarregarResumo()]);
 	}
 </script>
 
@@ -229,13 +221,67 @@
 {:else if erro}
 	<div class="erro">{erro}</div>
 {:else if espelho}
+	{#snippet batida(registro: RegistroRecord, interativo: boolean)}
+		{@const revertivel = interativo && anulacaoAvulsa(registro)}
+		{@const titulo = registro.anulacao
+			? revertivel
+				? `Anulada: ${registro.anulacao.motivo} — clique para reverter`
+				: `Ajustada/anulada: ${registro.anulacao.motivo}`
+			: (registro.createdReason ?? (interativo ? 'Clique para ajustar' : 'Ponto válido'))}
+		{#if interativo}
+			<button
+				type="button"
+				class="batida"
+				class:batida--manual={!!registro.createdBy}
+				class:batida--anulada={!!registro.anulacao}
+				class:batida--revertivel={revertivel}
+				title={titulo}
+				onclick={() => onClickBatida(registro)}
+				disabled={!!registro.anulacao && !revertivel}
+			>
+				{formatHora(registro.timestamp)}
+			</button>
+		{:else}
+			<span
+				class="batida batida--leitura"
+				class:batida--manual={!!registro.createdBy}
+				class:batida--anulada={!!registro.anulacao}
+				title={titulo}
+			>
+				{formatHora(registro.timestamp)}
+			</span>
+		{/if}
+		{#if registro.localizacao === 'fora' || registro.localizacao === 'sem_localizacao'}
+			{@const textoLocal = descreverLocalizacao(registro) ?? ''}
+			{#if registro.latitude != null && registro.longitude != null}
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- link externo (OpenStreetMap) -->
+				<a
+					class="local-alerta"
+					href={linkMapa(registro.latitude, registro.longitude)}
+					target="_blank"
+					rel="noopener noreferrer"
+					title="{textoLocal} — ver no mapa"
+					aria-label="{textoLocal} — ver no mapa"><Icon name="map-pin" size={11} /></a
+				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			{:else}
+				<span class="local-alerta" title={textoLocal} aria-label={textoLocal}
+					><Icon name="map-pin" size={11} /></span
+				>
+			{/if}
+		{/if}
+	{/snippet}
+
 	{#snippet tabela(
 		titulo: string,
-		picker: (s: EspelhoDia | null, tipo: RegistroType) => RegistroRecord | null,
+		celulas: Celulas,
 		totalDoDia: (s: EspelhoDia | null) => number,
 		totais: { horas: number; extras: number; deficit: number },
 		interativo: boolean
 	)}
+		{@const colunas = totalDeColunas(
+			Math.max(0, ...diasVisiveis.map((d) => celulas(d.summary).length))
+		)}
 		<div class="tabela">
 			<h3 class="tabela-titulo">{titulo}</h3>
 			<div class="totais">
@@ -250,13 +296,14 @@
 					<thead>
 						<tr>
 							<th class="col-data">Data</th>
-							{#each TIPOS_ORDEM as t (t)}<th class="col-batida">{TIPO_LABEL[t]}</th>{/each}
+							{#each { length: colunas }, i (i)}<th class="col-batida">{rotuloColuna(i)}</th>{/each}
 							<th class="col-total">Total</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each diasVisiveis as dia (dia.date)}
 							{@const ajustado = ajustadoNoDia(dia.summary)}
+							{@const doDia = celulas(dia.summary)}
 							<tr class:fim-semana={dia.isFimSemana || (dia.feriado && !dia.feriado.escalado)}>
 								<td class="dia">
 									<!-- Sempre presente para manter as datas alinhadas; só pinta no dia ajustado. -->
@@ -277,75 +324,25 @@
 										>
 									{/if}
 								</td>
-								{#each TIPOS_ORDEM as tipo (tipo)}
-									{@const registro = picker(dia.summary, tipo)}
-									{#if registro}
-										{@const revertivel = interativo && anulacaoAvulsa(registro)}
-										{@const titulo = registro.anulacao
-											? revertivel
-												? `Anulada: ${registro.anulacao.motivo} — clique para reverter`
-												: `Ajustada/anulada: ${registro.anulacao.motivo}`
-											: (registro.createdReason ??
-												(interativo ? 'Clique para ajustar' : 'Ponto válido'))}
-										<td class="cel">
-											{#if interativo}
-												<button
-													type="button"
-													class="batida"
-													class:batida--manual={!!registro.createdBy}
-													class:batida--anulada={!!registro.anulacao}
-													class:batida--revertivel={revertivel}
-													title={titulo}
-													onclick={() => onClickBatida(registro)}
-													disabled={!!registro.anulacao && !revertivel}
-												>
-													{formatHora(registro.timestamp)}
-												</button>
-											{:else}
-												<span
-													class="batida batida--leitura"
-													class:batida--manual={!!registro.createdBy}
-													class:batida--anulada={!!registro.anulacao}
-													title={titulo}
-												>
-													{formatHora(registro.timestamp)}
-												</span>
-											{/if}
-											{#if registro.localizacao === 'fora' || registro.localizacao === 'sem_localizacao'}
-												{@const textoLocal = descreverLocalizacao(registro) ?? ''}
-												{#if registro.latitude != null && registro.longitude != null}
-													<!-- eslint-disable svelte/no-navigation-without-resolve -- link externo (OpenStreetMap) -->
-													<a
-														class="local-alerta"
-														href={linkMapa(registro.latitude, registro.longitude)}
-														target="_blank"
-														rel="noopener noreferrer"
-														title="{textoLocal} — ver no mapa"
-														aria-label="{textoLocal} — ver no mapa"
-														><Icon name="map-pin" size={11} /></a
-													>
-													<!-- eslint-enable svelte/no-navigation-without-resolve -->
-												{:else}
-													<span class="local-alerta" title={textoLocal} aria-label={textoLocal}
-														><Icon name="map-pin" size={11} /></span
-													>
-												{/if}
-											{/if}
-										</td>
-									{:else}
-										<td class="cel">
-											{#if interativo}
-												<button
-													type="button"
-													class="vazia"
-													title="Adicionar registro manual"
-													onclick={() => abrirModalManual(dia.date, tipo)}>+</button
-												>
-											{:else}
-												<span class="sem-batida">—</span>
-											{/if}
-										</td>
-									{/if}
+								{#each { length: colunas }, i (i)}
+									{@const celula = doDia[i]}
+									<td class="cel">
+										{#if celula}
+											{#each celula.anuladas as anul (anul.id)}
+												{@render batida(anul, interativo)}
+											{/each}
+											{#if celula.valida}{@render batida(celula.valida, interativo)}{/if}
+										{:else if interativo}
+											<button
+												type="button"
+												class="vazia"
+												title="Adicionar registro manual"
+												onclick={() => abrirModalManual(dia.date, i)}>+</button
+											>
+										{:else}
+											<span class="sem-batida">—</span>
+										{/if}
+									</td>
 								{/each}
 								<td class="total">{formatTotalHoras(totalDoDia(dia.summary))}</td>
 							</tr>
@@ -399,19 +396,19 @@
 	</div>
 
 	{#if editavel}
-		{@render tabela('Marcações', batidaDoDia, (s) => s?.totalHours ?? 0, espelho.totais, true)}
+		{@render tabela('Marcações', celulasDoDia, (s) => s?.totalHours ?? 0, espelho.totais, true)}
 	{:else}
 		<div class="comparacao">
 			{@render tabela(
 				'Marcações do colaborador',
-				batidaOriginalDoDia,
+				originaisDoDia,
 				(s) => s?.original.totalHours ?? 0,
 				espelho.totais.original,
 				false
 			)}
 			{@render tabela(
 				'Com ajustes do administrador',
-				batidaDoDia,
+				celulasDoDia,
 				(s) => s?.totalHours ?? 0,
 				espelho.totais,
 				false
@@ -662,6 +659,10 @@
 	.cel {
 		padding: 0.25rem;
 		position: relative;
+	}
+	/* Desconsiderada empilhada sobre a válida da mesma posição. */
+	.cel .batida + .batida {
+		margin-top: 0.25rem;
 	}
 	/* Batida fora do local ou sem localização: entrou, mas pede conferência. */
 	.local-alerta {

@@ -26,9 +26,16 @@
  *   férias em 21/09, por exemplo);
  * - ausências novas: férias e atestados vêm do período real, não se inventam.
  *
- * O sorteio é **determinístico** por colaborador e dia (`mulberry32` sobre o hash
- * de `c|dia`): rodar o seed de novo reproduz os mesmos dias, e rodar mais tarde
- * só acrescenta os dias novos. No dia corrente entram apenas as marcações até o
+ * O modelo sai **sem reposição**: os dias reais de cada dia da semana formam um
+ * "saco" embaralhado, e um dia só volta depois de todos terem sido usados. Com
+ * reposição, quem tinha poucos dias reais repetia o mesmo sábado, batida por batida,
+ * três semanas seguidas. Com menos de `MIN_MODELOS` dias reais naquele dia da semana
+ * (admissão recente), o saco recebe os dias reais dos colegas da mesma jornada.
+ *
+ * Tudo é **determinístico** (`mulberry32` sobre o hash de `c|dia` para a falta e
+ * de `c|dia da semana|rodada` para o embaralhamento) e os dias são percorridos em
+ * ordem: rodar o seed de novo reproduz os mesmos dias, e rodar mais tarde só
+ * acrescenta os dias novos. No dia corrente entram apenas as marcações até o
  * instante do seed, então o painel mostra gente trabalhando e gente que ainda não
  * chegou.
  *
@@ -40,6 +47,13 @@ import { diaDe, type Dia } from '../src/lib/server/periodo';
 import type { DadosJson, DiaJson } from './seed-importada';
 
 const DIAS_SEMANA = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+
+/**
+ * Com menos dias reais que isso num dia da semana, o saco recebe também os dias
+ * reais dos colegas da mesma jornada naquele dia da semana: quem foi admitido há
+ * pouco repetiria o único sábado que tem (no seed, um dia em aberto) toda semana.
+ */
+const MIN_MODELOS = 3;
 
 type DiasJornada = Record<string, { ativo?: boolean } | undefined>;
 
@@ -69,6 +83,34 @@ function mulberry32(semente: number): () => number {
 	};
 }
 
+/** Embaralhamento de Fisher–Yates com o gerador dado (não altera a entrada). */
+function embaralhar<T>(itens: T[], aleatorio: () => number): T[] {
+	const out = [...itens];
+	for (let i = out.length - 1; i > 0; i--) {
+		const j = Math.floor(aleatorio() * (i + 1));
+		[out[i], out[j]] = [out[j], out[i]];
+	}
+	return out;
+}
+
+/**
+ * Tira os modelos sem reposição: esgotado o saco, embaralha uma nova rodada e evita
+ * que ela comece pelo último dia tirado (que ficaria repetido em semanas seguidas).
+ */
+function sacoDeModelos<T>(itens: T[], semente: string): () => T {
+	let rodada = 0;
+	let saco: T[] = [];
+	let ultimo: T | undefined;
+	return () => {
+		if (saco.length === 0) {
+			saco = embaralhar(itens, mulberry32(hash32(`${semente}|${rodada++}`)));
+			if (saco.length > 1 && saco[saco.length - 1] === ultimo) saco.unshift(saco.pop()!);
+		}
+		ultimo = saco.pop()!;
+		return ultimo;
+	};
+}
+
 function diasEntre(inicio: Dia, fim: Dia): Dia[] {
 	const dias: Dia[] = [];
 	for (let d = inicio; d <= fim; d = somarDias(d, 1)) dias.push(d);
@@ -94,6 +136,12 @@ export function estenderDias(dados: DadosJson, agora: Date): Extensao {
 	for (let ano = Number(primeiroReal.slice(0, 4)); ano <= Number(hoje.slice(0, 4)); ano++) {
 		for (const dia of feriadosNacionais(ano).keys()) feriados.add(dia);
 	}
+
+	/** Dias reais dos colegas da mesma jornada, no dia da semana `w`. */
+	const daMesmaJornada = (jornada: number, c: number, w: number) =>
+		dados.dias.filter(
+			(d) => d.c !== c && dados.colaboradores[d.c].jornada === jornada && diaDaSemana(d.d) === w
+		);
 
 	const novos: DiaJson[] = [];
 	dados.colaboradores.forEach((colab, c) => {
@@ -121,14 +169,25 @@ export function estenderDias(dados: DadosJson, agora: Date): Extensao {
 			porDiaDaSemana.set(w, [...(porDiaDaSemana.get(w) ?? []), reais.get(d)!]);
 		}
 		const todos = trabalhados.map((d) => reais.get(d)!);
+		const sacos = new Map<number, () => DiaJson>();
+		const tirarModelo = (w: number) => {
+			if (!sacos.has(w)) {
+				const proprios = porDiaDaSemana.get(w) ?? [];
+				const modelos =
+					proprios.length >= MIN_MODELOS
+						? proprios
+						: [...proprios, ...daMesmaJornada(colab.jornada!, c, w)];
+				sacos.set(w, sacoDeModelos(modelos.length > 0 ? modelos : todos, `${c}|${w}`));
+			}
+			return sacos.get(w)!();
+		};
 
 		for (const dia of diasEntre(de, hoje)) {
 			if (!previsto(dia)) continue;
 			const sorteio = mulberry32(hash32(`${c}|${dia}`));
 			if (sorteio() < taxaFalta) continue;
 
-			const candidatos = porDiaDaSemana.get(diaDaSemana(dia)) ?? todos;
-			const modelo = candidatos[Math.floor(sorteio() * candidatos.length)];
+			const modelo = tirarModelo(diaDaSemana(dia));
 			let m = modelo.m.map((x) => ({ ...x }));
 			// Dia corrente: só o que já aconteceu até o instante do seed.
 			if (dia === hoje) {
