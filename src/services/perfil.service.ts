@@ -1,78 +1,90 @@
 /**
  * @module services/perfil.service
- * @description Perfil do colaborador ao longo do tempo (dashboard individual do admin).
+ * @description Perfil do colaborador (dashboard individual do admin): o dia, a
+ * semana e os cards do período. Espelha os tipos de `src/lib/server/perfil/`.
  */
 
 import { get } from './api';
 
 export type PeriodoPerfil = '30d' | '3m' | '6m' | '12m';
-export type Granularidade = 'semana' | 'mes';
 
-export type SituacaoDiaPerfil =
-	| 'no_horario'
-	| 'atraso'
-	| 'falta'
+export type SituacaoDia =
+	| 'normal'
 	| 'aberto'
+	| 'em_andamento'
+	| 'falta'
 	| 'ausencia'
-	| 'folga'
-	| 'sem_jornada'
+	| 'feriado'
+	| 'sem_expediente'
 	| 'fora_vinculo';
 
-export type FaixaChegada = 'antes' | 'pontual' | 'ate15' | 'ate30' | 'acima30';
-
-export interface ResumoPerfil {
-	pontualidade: {
-		diasAvaliados: number;
-		diasComAtraso: number;
-		percentualNoHorario: number | null;
-		atrasoMedioMin: number | null;
-		maiorAtrasoMin: number | null;
-		atrasoTotalMin: number;
-	};
-	assiduidade: {
-		diasPrevistos: number;
-		faltas: number;
-		diasEmAberto: number;
-		diasAtestado: number;
-		diasFerias: number;
-		diasOutrasAusencias: number;
-		inclusoes: number;
-		desconsideradas: number;
-	};
-	horas: {
-		realizadoMin: number;
-		previstoMin: number;
-		extraMin: number;
-		deficitMin: number;
-		saidasAntecipadas: number;
-		saidaAntecipadaMediaMin: number | null;
-		intervalosCurtos: number;
-		intervalosLongos: number;
-	};
-	local: { batidas: number; conferidas: number; fora: number; semLocalizacao: number };
+export interface DesviosDia {
+	entradaMin: number | null;
+	voltaMin: number | null;
+	saidaMin: number | null;
+	intervaloMin: number | null;
+	intervaloPrevistoMin: number | null;
+	atrasoEntrada: boolean;
+	voltaAtrasada: boolean;
+	intervaloCurto: boolean;
 }
 
-export interface PontoSerie {
-	chave: string;
-	diasAvaliados: number;
-	diasComAtraso: number;
-	percentualAtraso: number | null;
-	atrasoMedioMin: number | null;
+export interface DiaDetalhe {
+	dia: string;
+	situacao: SituacaoDia;
+	ausenciaTipo: string | null;
+	feriado: string | null;
+	/** "HH:MM". */
+	previstas: string[];
+	marcacoes: { hora: string; incluida: boolean }[];
+	desvios: DesviosDia;
+	ajuste: boolean;
+	realizadoMin: number;
+	contratualMin: number | null;
+	totalMin: number | null;
+}
+
+export type Tom = 'ok' | 'aviso' | 'alerta' | 'neutro';
+
+export interface SemanaPerfil {
+	inicio: string;
+	fim: string;
+	dias: DiaDetalhe[];
+	realizadoMin: number;
+	previstoMin: number;
+	diasForaDaConta: number;
+	atrasosEntrada: number;
+	voltasAtrasadas: number;
 	faltas: number;
 }
 
-export interface PontoDiaSemana {
-	diaSemana: number;
-	diasAvaliados: number;
-	diasComAtraso: number;
-	percentualAtraso: number | null;
-	atrasoMedioMin: number | null;
-}
-
-export interface DiaPerfil {
-	dia: string;
-	situacao: SituacaoDiaPerfil;
-	chegadaMin: number | null;
+export interface CardsPerfil {
+	presenca: {
+		diasComMarcacao: number;
+		diasPrevistos: number;
+		faltas: number;
+		percentual: number | null;
+		ferias: number;
+		atestado: number;
+		outrasAusencias: number;
+		folgas: number;
+	};
+	pontualidade: { diasAvaliados: number; diasSemAtraso: number; percentual: number | null };
+	ondeAtrasa: {
+		onde: 'entrada' | 'volta' | 'ambos' | 'nenhum';
+		entradas: number;
+		voltas: number;
+		tipicoEntradaMin: number | null;
+		tipicoVoltaMin: number | null;
+	};
+	saldo: {
+		realizadoMin: number;
+		previstoMin: number;
+		saldoMin: number;
+		diasComAjuste: number;
+		diasComBatidaFaltando: number;
+	};
+	padrao: { diasComAtraso: number; compensaNaSaida: boolean };
 }
 
 export interface PerfilColaborador {
@@ -85,20 +97,18 @@ export interface PerfilColaborador {
 		admissao: string | null;
 		desligamento: string | null;
 	};
+	semJornada: boolean;
+	dia: {
+		rotulo: 'hoje' | 'ultimo';
+		dia: DiaDetalhe;
+		chip: { texto: string; tom: Tom };
+		leitura: string;
+	} | null;
+	semana: SemanaPerfil | null;
 	periodo: PeriodoPerfil;
-	granularidade: Granularidade;
-	atual: { inicio: string; fim: string };
-	anterior: { inicio: string; fim: string };
-	perfil: {
-		semJornada: boolean;
-		resumo: ResumoPerfil;
-		serie: PontoSerie[];
-		porDiaSemana: PontoDiaSemana[];
-		chegada: Record<FaixaChegada, number>;
-		dias: DiaPerfil[];
-	};
-	resumoAnterior: ResumoPerfil;
-	banco: { inicio: string; fim: string; saldoMin: number } | null;
+	intervalo: { inicio: string; fim: string };
+	periodosDisponiveis: PeriodoPerfil[];
+	cards: CardsPerfil;
 }
 
 export const perfilService = {

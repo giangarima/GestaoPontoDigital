@@ -6,11 +6,16 @@ import {
 } from '@/lib/server/espelho/montar';
 import { dataPura } from '@/lib/server/periodo';
 import {
+	chipDoDia,
 	desviosDoDia,
-	faixaDaChegada,
+	detalharDia,
+	diaDeReferencia,
 	inicioDaSemana,
-	intervalosDoPeriodo,
-	montarPerfil
+	intervaloDoPeriodo,
+	leituraDoDia,
+	montarCards,
+	montarSemana,
+	periodosDisponiveis
 } from './montar';
 
 const brt = (s: string) => new Date(`${s}:00-03:00`);
@@ -36,26 +41,36 @@ const VERSOES = [
 		}
 	}
 ];
+const PADRAO = ['08:00', '12:00', '13:00', '17:00'];
 
 let nsr = 0;
-function batidas(dia: string, horas: string[], fonte: 'O' | 'I' = 'O'): MarcacaoEspelho[] {
+function batidas(
+	dia: string,
+	horas: string[],
+	opcoes: { fonte?: 'O' | 'I'; anulada?: boolean } = {}
+): MarcacaoEspelho[] {
+	const fonte = opcoes.fonte ?? 'O';
 	return horas.map((h) => ({
 		marcadoEm: brt(`${dia}T${h}`),
 		fonte,
 		nsr: fonte === 'O' ? BigInt(++nsr) : null,
-		criadoMotivo: fonte === 'I' ? 'esqueceu' : null,
-		anulacao: null
+		criadoMotivo: fonte === 'I' ? 'Esqueceu de bater o ponto' : null,
+		anulacao: opcoes.anulada ? { motivo: 'Marcação no mesmo minuto' } : null
 	}));
 }
 
-const PADRAO = ['08:00', '12:00', '13:00', '17:00'];
-
-/** Semana de segunda 05/01/2026 a domingo 11/01/2026, apurada em 12/01. */
-function apurar(marcacoes: MarcacaoEspelho[], extra: Partial<ApuracaoEntrada> = {}) {
-	return apurarPeriodo({
+/** Semana de segunda 05/01/2026 a domingo 11/01/2026, vista no domingo. */
+const HOJE = '2026-01-11';
+function detalhar(
+	marcacoes: MarcacaoEspelho[],
+	extra: Partial<ApuracaoEntrada> = {},
+	hoje = HOJE,
+	agora = brt(`${hoje}T09:00`)
+) {
+	const ap = apurarPeriodo({
 		inicio: '2026-01-05',
-		fim: '2026-01-11',
-		emitidoEm: brt('2026-01-12T09:00'),
+		fim: hoje,
+		emitidoEm: agora,
 		versoes: VERSOES,
 		escala: null,
 		ausencias: [],
@@ -65,201 +80,322 @@ function apurar(marcacoes: MarcacaoEspelho[], extra: Partial<ApuracaoEntrada> = 
 		desligamento: null,
 		...extra
 	});
+	return ap.dias.map((d) => detalharDia(d, ap.horarios, hoje));
 }
+const doDia = (dias: ReturnType<typeof detalhar>, d: string) => dias.find((x) => x.dia === d)!;
 
-const dia = (ap: ReturnType<typeof apurar>, d: string) => ap.dias.find((x) => x.dia === d)!;
-const PARES: [string, string][] = [
-	['08:00', '12:00'],
-	['13:00', '17:00']
+/**
+ * Semana típica: seg pontual, ter 20 min atrasada na entrada, qua com batida
+ * incluída pelo admin, qui falta, sex esqueceu a última batida.
+ */
+const SEMANA = [
+	...batidas('2026-01-05', PADRAO),
+	...batidas('2026-01-06', ['08:20', '12:00', '13:00', '17:00']),
+	...batidas('2026-01-07', ['08:00', '12:00', '13:00']),
+	...batidas('2026-01-07', ['17:00'], { fonte: 'I' }),
+	...batidas('2026-01-09', ['08:00', '12:00', '13:00'])
 ];
 
 describe('desviosDoDia', () => {
-	it('5 min de atraso ainda é pontual; 6 min é atraso', () => {
-		const ap = apurar([
-			...batidas('2026-01-05', ['08:05', '12:00', '13:00', '17:00']),
-			...batidas('2026-01-06', ['08:06', '12:00', '13:00', '17:00'])
-		]);
-		expect(desviosDoDia(dia(ap, '2026-01-05'), PARES)).toMatchObject({
-			chegadaMin: 5,
-			atraso: false
+	const previstas = PADRAO.map((h) => brt(`2026-01-05T${h}`));
+	const em = (horas: string[]) => horas.map((h) => brt(`2026-01-05T${h}`));
+
+	it('dia pontual: tudo zero, nenhum alerta', () => {
+		expect(desviosDoDia(em(PADRAO), previstas)).toEqual({
+			entradaMin: 0,
+			voltaMin: 0,
+			saidaMin: 0,
+			intervaloMin: 60,
+			intervaloPrevistoMin: 60,
+			atrasoEntrada: false,
+			voltaAtrasada: false,
+			intervaloCurto: false
 		});
-		expect(desviosDoDia(dia(ap, '2026-01-06'), PARES)).toMatchObject({
-			chegadaMin: 6,
-			atraso: true
+	});
+
+	it('atraso na entrada só passa de ATRASO_MIN (5 min)', () => {
+		expect(desviosDoDia(em(['08:05', '12:00', '13:00', '17:00']), previstas).atrasoEntrada).toBe(
+			false
+		);
+		expect(desviosDoDia(em(['08:20', '12:00', '13:00', '17:00']), previstas)).toMatchObject({
+			entradaMin: 20,
+			atrasoEntrada: true
 		});
 	});
 
-	it('chegar cedo é chegada negativa', () => {
-		const ap = apurar(batidas('2026-01-05', ['07:40', '12:00', '13:00', '17:00']));
-		expect(desviosDoDia(dia(ap, '2026-01-05'), PARES).chegadaMin).toBe(-20);
+	it('volta do intervalo atrasada e intervalo curto (art. 71)', () => {
+		expect(desviosDoDia(em(['08:00', '12:00', '13:30', '17:00']), previstas)).toMatchObject({
+			voltaMin: 30,
+			voltaAtrasada: true,
+			intervaloMin: 90,
+			intervaloCurto: false
+		});
+		expect(desviosDoDia(em(['08:00', '12:00', '12:40', '17:00']), previstas)).toMatchObject({
+			intervaloMin: 40,
+			intervaloCurto: true,
+			voltaAtrasada: false
+		});
 	});
 
-	it('saída antecipada só acima de 5 min e só com par fechado', () => {
-		const ap = apurar([
-			...batidas('2026-01-05', ['08:00', '12:00', '13:00', '16:30']),
-			...batidas('2026-01-06', ['08:00', '12:00', '13:00', '16:56']),
-			...batidas('2026-01-07', ['08:00', '12:00', '13:00'])
-		]);
-		expect(desviosDoDia(dia(ap, '2026-01-05'), PARES).saidaAntecipadaMin).toBe(30);
-		expect(desviosDoDia(dia(ap, '2026-01-06'), PARES).saidaAntecipadaMin).toBeNull();
-		expect(desviosDoDia(dia(ap, '2026-01-07'), PARES).saidaAntecipadaMin).toBeNull();
+	it('a volta atrasada é o intervalo excedido, não o horário da volta', () => {
+		// Saiu 1h depois para o intervalo e voltou 1h depois: intervalo igual ao previsto.
+		expect(desviosDoDia(em(['08:00', '13:00', '14:00', '17:00']), previstas)).toMatchObject({
+			voltaMin: 0,
+			voltaAtrasada: false,
+			intervaloMin: 60
+		});
 	});
 
-	it('intervalo realizado contra o previsto', () => {
-		const ap = apurar([
-			...batidas('2026-01-05', ['08:00', '12:00', '12:30', '17:00']),
-			...batidas('2026-01-06', ['08:00', '12:00', '13:20', '17:00'])
-		]);
-		expect(desviosDoDia(dia(ap, '2026-01-05'), PARES).intervaloDifMin).toBe(-30);
-		expect(desviosDoDia(dia(ap, '2026-01-06'), PARES).intervaloDifMin).toBe(20);
+	it('com 3 marcações já mede a volta; a saída só com o par fechado', () => {
+		expect(desviosDoDia(em(['08:00', '12:00', '13:20']), previstas)).toMatchObject({
+			voltaMin: 20,
+			voltaAtrasada: true,
+			saidaMin: null
+		});
 	});
 
-	it('marcação desconsiderada não conta como chegada', () => {
-		const ms = batidas('2026-01-05', ['07:00', '08:20', '12:00', '13:00', '17:00']);
-		ms[0].anulacao = { motivo: 'duplicada' };
-		const ap = apurar(ms);
-		expect(desviosDoDia(dia(ap, '2026-01-05'), PARES).chegadaMin).toBe(20);
+	it('com mais de 4 marcações a 3ª não é a volta: sem volta nem intervalo', () => {
+		const d = desviosDoDia(em(['08:00', '10:00', '10:30', '12:00', '13:00', '17:40']), previstas);
+		expect(d).toMatchObject({ voltaMin: null, intervaloMin: null, saidaMin: 40 });
 	});
 
-	it('sem horário (folga) ou sem marcação não avalia', () => {
-		const ap = apurar(batidas('2026-01-10', PADRAO));
-		expect(desviosDoDia(dia(ap, '2026-01-10'), null).chegadaMin).toBeNull();
-		expect(desviosDoDia(dia(ap, '2026-01-05'), PARES).chegadaMin).toBeNull();
+	it('sem horário previsto ou sem marcação: nada a medir', () => {
+		expect(desviosDoDia(em(PADRAO), null).entradaMin).toBeNull();
+		expect(desviosDoDia([], previstas).entradaMin).toBeNull();
 	});
 });
 
-describe('montarPerfil', () => {
-	// seg pontual, ter 20 min atrasada, qua falta, qui esqueceu a saída, sex atestado,
-	// sáb trabalhou na folga.
-	const ap = apurar(
-		[
-			...batidas('2026-01-05', PADRAO),
-			...batidas('2026-01-06', ['08:20', '12:00', '13:00', '17:00']),
-			...batidas('2026-01-08', ['08:00', '12:00', '13:00']),
-			...batidas('2026-01-10', ['09:00', '12:00'])
-		],
-		{
+describe('detalharDia', () => {
+	const dias = detalhar(SEMANA);
+
+	it('horas em Brasília, desvios e total do dia confiável', () => {
+		expect(doDia(dias, '2026-01-06')).toMatchObject({
+			situacao: 'normal',
+			previstas: PADRAO,
+			marcacoes: [
+				{ hora: '08:20', incluida: false },
+				{ hora: '12:00', incluida: false },
+				{ hora: '13:00', incluida: false },
+				{ hora: '17:00', incluida: false }
+			],
+			ajuste: false,
+			totalMin: 460
+		});
+	});
+
+	it('inclusão do admin: marcada, e o total do dia sai da conta', () => {
+		const qua = doDia(dias, '2026-01-07');
+		expect(qua.marcacoes.at(-1)).toEqual({ hora: '17:00', incluida: true });
+		expect(qua).toMatchObject({ ajuste: true, totalMin: null });
+	});
+
+	it('desconsiderada some das marcações e conta como ajuste', () => {
+		const d = detalhar([
+			...batidas('2026-01-05', ['08:00'], { anulada: true }),
+			...batidas('2026-01-05', PADRAO)
+		]);
+		expect(doDia(d, '2026-01-05')).toMatchObject({ ajuste: true, totalMin: null });
+		expect(doDia(d, '2026-01-05').marcacoes).toHaveLength(4);
+	});
+
+	it('falta, batida faltando e dia sem expediente', () => {
+		expect(doDia(dias, '2026-01-08').situacao).toBe('falta');
+		expect(doDia(dias, '2026-01-09')).toMatchObject({ situacao: 'aberto', totalMin: null });
+		expect(doDia(dias, '2026-01-10').situacao).toBe('sem_expediente');
+	});
+
+	it('dia corrente fica em andamento até fechar as marcações previstas', () => {
+		const d = detalhar(
+			batidas('2026-01-09', ['08:00', '12:00']),
+			{},
+			'2026-01-09',
+			brt('2026-01-09T12:30')
+		);
+		expect(doDia(d, '2026-01-09')).toMatchObject({ situacao: 'em_andamento', totalMin: null });
+	});
+});
+
+describe('dia de referência e chip', () => {
+	it('domingo sem expediente: o último dia com expediente', () => {
+		const ref = diaDeReferencia(detalhar(SEMANA), HOJE);
+		expect(ref).toMatchObject({ rotulo: 'ultimo', dia: { dia: '2026-01-09' } });
+	});
+
+	it('dia útil é "hoje", mesmo antes da primeira batida', () => {
+		const d = detalhar([], {}, '2026-01-09', brt('2026-01-09T07:30'));
+		expect(diaDeReferencia(d, '2026-01-09')).toMatchObject({ rotulo: 'hoje' });
+	});
+
+	it('férias não são dia de referência', () => {
+		const d = detalhar(SEMANA, {
 			ausencias: [
-				{ tipo: 'atestado', dataInicio: dataPura('2026-01-09'), dataFim: dataPura('2026-01-09') }
+				{ tipo: 'ferias', dataInicio: dataPura('2026-01-08'), dataFim: dataPura('2026-01-11') }
 			]
-		}
-	);
-	const perfil = montarPerfil(
-		ap,
-		['dentro', 'fora', null, 'sem_localizacao', 'sem_locais'],
-		'semana'
-	);
-
-	it('pontualidade conta só dias com expediente e marcação, sem ausência', () => {
-		expect(perfil.resumo.pontualidade).toEqual({
-			diasAvaliados: 3, // seg, ter, qui (qua faltou, sex atestado, sáb é folga)
-			diasComAtraso: 1,
-			percentualNoHorario: 66.7,
-			atrasoMedioMin: 20,
-			maiorAtrasoMin: 20,
-			atrasoTotalMin: 20
 		});
+		expect(diaDeReferencia(d, HOJE)!.dia.dia).toBe('2026-01-07');
 	});
 
-	it('assiduidade vem dos totais do espelho', () => {
-		expect(perfil.resumo.assiduidade).toMatchObject({
-			faltas: ap.totais.faltas,
-			diasEmAberto: ap.totais.diasEmAberto,
-			diasAtestado: 1,
-			diasFerias: 0,
-			inclusoes: 0
+	it('chip do dia: atraso, batida faltando, falta', () => {
+		const dias = detalhar(SEMANA);
+		const agora = brt(`${HOJE}T09:00`);
+		expect(chipDoDia(doDia(dias, '2026-01-06'), agora)).toEqual({
+			texto: 'Atraso de 20 min na entrada',
+			tom: 'aviso'
 		});
-		expect(perfil.resumo.assiduidade.faltas).toBe(1);
-		expect(perfil.resumo.assiduidade.diasEmAberto).toBe(1);
+		expect(chipDoDia(doDia(dias, '2026-01-05'), agora)).toEqual({ texto: 'No horário', tom: 'ok' });
+		expect(chipDoDia(doDia(dias, '2026-01-09'), agora).texto).toBe('Batida faltando');
+		expect(chipDoDia(doDia(dias, '2026-01-08'), agora)).toEqual({ texto: 'Falta', tom: 'alerta' });
 	});
 
-	it('horas são as do espelho, sem recálculo', () => {
-		expect(perfil.resumo.horas).toMatchObject({
-			realizadoMin: ap.totais.realizadoMin,
-			previstoMin: ap.totais.previstoMin,
-			extraMin: ap.totais.extraMin,
-			deficitMin: ap.totais.deficitMin
-		});
-	});
-
-	it('local: só dentro/fora/sem_localizacao contam como conferidas', () => {
-		expect(perfil.resumo.local).toEqual({ batidas: 5, conferidas: 3, fora: 1, semLocalizacao: 1 });
-	});
-
-	it('calendário classifica cada dia', () => {
-		expect(perfil.dias.map((d) => d.situacao)).toEqual([
-			'no_horario',
-			'atraso',
-			'falta',
-			'aberto',
-			'ausencia',
-			'folga',
-			'folga'
-		]);
-	});
-
-	it('série semanal agrupa pela segunda-feira', () => {
-		expect(perfil.serie).toEqual([
-			{
-				chave: '2026-01-05',
-				diasAvaliados: 3,
-				diasComAtraso: 1,
-				percentualAtraso: 33.3,
-				atrasoMedioMin: 20,
-				faltas: 1
-			}
-		]);
-	});
-
-	it('padrão por dia da semana: o atraso cai na terça', () => {
-		const terca = perfil.porDiaSemana[2];
-		expect(terca).toMatchObject({ diasAvaliados: 1, diasComAtraso: 1, percentualAtraso: 100 });
-		expect(perfil.porDiaSemana[0].percentualAtraso).toBeNull();
-	});
-
-	it('histograma da chegada', () => {
-		expect(perfil.chegada).toEqual({ antes: 0, pontual: 2, ate15: 0, ate30: 1, acima30: 0 });
-	});
-
-	it('inclusão do admin aparece na assiduidade', () => {
-		const comInclusao = apurar([
-			...batidas('2026-01-05', ['08:00', '12:00', '13:00']),
-			...batidas('2026-01-05', ['17:00'], 'I')
-		]);
-		expect(montarPerfil(comInclusao, [], 'semana').resumo.assiduidade.inclusoes).toBe(1);
-	});
-
-	it('período sem dado avaliado não inventa percentual', () => {
-		const vazio = montarPerfil(apurar([], { admissao: dataPura('2026-02-01') }), [], 'mes');
-		expect(vazio.resumo.pontualidade.percentualNoHorario).toBeNull();
-		expect(vazio.resumo.pontualidade.atrasoMedioMin).toBeNull();
-		expect(vazio.serie).toEqual([
-			expect.objectContaining({ chave: '2026-01', diasAvaliados: 0, percentualAtraso: null })
-		]);
+	it('chip do dia corrente sem batida segue o painel: só vira falta provável depois de 1 h', () => {
+		const em = (hora: string) => {
+			const agora = brt(`2026-01-09T${hora}`);
+			const d = doDia(detalhar([], {}, '2026-01-09', agora), '2026-01-09');
+			return chipDoDia(d, agora);
+		};
+		expect(em('07:58')).toEqual({ texto: 'Entrada prevista às 08:00', tom: 'neutro' });
+		expect(em('08:30')).toEqual({ texto: 'Sem entrada até agora · previsto 08:00', tom: 'aviso' });
+		expect(em('09:30').tom).toBe('alerta');
 	});
 });
 
-describe('auxiliares', () => {
-	it('intervalosDoPeriodo: atual termina ontem; anterior é contíguo e do mesmo tamanho', () => {
-		const r = intervalosDoPeriodo('30d', brt('2026-10-17T10:00'));
-		expect(r.atual).toEqual({ inicio: '2026-09-17', fim: '2026-10-16' });
-		expect(r.anterior).toEqual({ inicio: '2026-08-18', fim: '2026-09-16' });
-		expect(r.granularidade).toBe('semana');
-		expect(intervalosDoPeriodo('6m', brt('2026-10-17T10:00')).granularidade).toBe('mes');
+describe('montarSemana', () => {
+	it('da segunda ao dia de referência, sem domingo e sábado vazios', () => {
+		const s = montarSemana(detalhar(SEMANA), '2026-01-09');
+		expect(s.dias.map((d) => d.dia)).toEqual([
+			'2026-01-05',
+			'2026-01-06',
+			'2026-01-07',
+			'2026-01-08',
+			'2026-01-09'
+		]);
+		// Total: seg 8h + ter 7h40; previsto inclui a falta de quinta.
+		expect(s).toMatchObject({
+			realizadoMin: 940,
+			previstoMin: 1440,
+			diasForaDaConta: 2,
+			atrasosEntrada: 1,
+			voltasAtrasadas: 0,
+			faltas: 1
+		});
+	});
+});
+
+describe('montarCards', () => {
+	const cards = montarCards(detalhar(SEMANA));
+
+	it('presença: dias previstos, faltas e o que ficou de fora', () => {
+		expect(cards.presenca).toMatchObject({
+			diasComMarcacao: 4,
+			diasPrevistos: 5,
+			faltas: 1,
+			percentual: 80,
+			ferias: 0,
+			folgas: 2
+		});
 	});
 
-	it('inicioDaSemana volta para a segunda (domingo é o fim da semana)', () => {
-		expect(inicioDaSemana('2026-01-05')).toBe('2026-01-05');
+	it('pontualidade e onde atrasa não avaliam dia com ajuste', () => {
+		// Avaliados: seg, ter e sex (qua tem inclusão; qui é falta).
+		expect(cards.pontualidade).toEqual({ diasAvaliados: 3, diasSemAtraso: 2, percentual: 66.7 });
+		expect(cards.ondeAtrasa).toEqual({
+			onde: 'entrada',
+			entradas: 1,
+			voltas: 0,
+			tipicoEntradaMin: 20,
+			tipicoVoltaMin: null
+		});
+	});
+
+	it('saldo: só dias limpos, a falta entra como déficit', () => {
+		expect(cards.saldo).toEqual({
+			realizadoMin: 940,
+			previstoMin: 1440,
+			saldoMin: -500,
+			diasComAjuste: 1,
+			diasComBatidaFaltando: 1
+		});
+	});
+
+	it('férias saem dos previstos e entram nas exclusões', () => {
+		const c = montarCards(
+			detalhar(batidas('2026-01-05', PADRAO), {
+				ausencias: [
+					{ tipo: 'ferias', dataInicio: dataPura('2026-01-06'), dataFim: dataPura('2026-01-09') }
+				]
+			})
+		);
+		expect(c.presenca).toMatchObject({ diasPrevistos: 1, faltas: 0, ferias: 4 });
+	});
+
+	it('atraso só na volta, e nos dois lugares', () => {
+		const volta = montarCards(
+			detalhar([
+				...batidas('2026-01-05', ['08:00', '12:00', '13:40', '17:00']),
+				...batidas('2026-01-06', ['08:00', '12:00', '13:20', '17:00'])
+			])
+		);
+		expect(volta.ondeAtrasa).toMatchObject({ onde: 'volta', voltas: 2, tipicoVoltaMin: 30 });
+
+		const ambos = montarCards(
+			detalhar([
+				...batidas('2026-01-05', ['08:30', '12:00', '13:00', '17:00']),
+				...batidas('2026-01-06', ['08:00', '12:00', '13:30', '17:00'])
+			])
+		);
+		expect(ambos.ondeAtrasa.onde).toBe('ambos');
+	});
+});
+
+describe('leituraDoDia', () => {
+	// Três dias chegando 30 min tarde e saindo 30 min depois: compensa na saída.
+	const compensa = [
+		...batidas('2026-01-05', ['08:30', '12:00', '13:00', '17:30']),
+		...batidas('2026-01-06', ['08:30', '12:00', '13:00', '17:30']),
+		...batidas('2026-01-07', ['08:30', '12:00', '13:00', '17:30'])
+	];
+
+	it('diz onde foi o atraso e se costuma compensar, sem pronome', () => {
+		const dias = detalhar(compensa);
+		const cards = montarCards(dias);
+		const texto = leituraDoDia(doDia(dias, '2026-01-07'), cards);
+		expect(texto).toBe(
+			'O atraso foi na entrada, como em todos os 3 dias com atraso do período. ' +
+				'Costuma sair mais tarde para compensar: vale confirmar se esse horário foi combinado.'
+		);
+		expect(texto).not.toMatch(/\b(ela|ele)\b/i);
+	});
+
+	it('sem compensação, só o onde', () => {
+		const dias = detalhar(SEMANA);
+		expect(leituraDoDia(doDia(dias, '2026-01-06'), montarCards(dias))).toBe(
+			'O atraso foi na entrada; no período houve 1 dia com atraso.'
+		);
+	});
+
+	it('dia sem desvio: nada a dizer; batida faltando aponta para Ajustes', () => {
+		const dias = detalhar(SEMANA);
+		const cards = montarCards(dias);
+		expect(leituraDoDia(doDia(dias, '2026-01-05'), cards)).toBe('');
+		expect(leituraDoDia(doDia(dias, '2026-01-09'), cards)).toMatch(/Ajustes/);
+	});
+});
+
+describe('período', () => {
+	const agora = brt('2026-10-17T10:00');
+
+	it('termina ontem', () => {
+		expect(intervaloDoPeriodo('30d', agora)).toEqual({ inicio: '2026-09-17', fim: '2026-10-16' });
+	});
+
+	it('só oferece períodos que cabem no tempo de casa', () => {
+		expect(periodosDisponiveis(null, agora)).toEqual(['30d', '3m', '6m', '12m']);
+		expect(periodosDisponiveis('2026-06-18', agora)).toEqual(['30d', '3m']);
+		expect(periodosDisponiveis('2026-10-01', agora)).toEqual(['30d']);
+	});
+
+	it('inicioDaSemana é a segunda-feira', () => {
 		expect(inicioDaSemana('2026-01-11')).toBe('2026-01-05');
-		expect(inicioDaSemana('2026-01-12')).toBe('2026-01-12');
-	});
-
-	it('faixaDaChegada', () => {
-		expect(faixaDaChegada(-6)).toBe('antes');
-		expect(faixaDaChegada(-5)).toBe('pontual');
-		expect(faixaDaChegada(5)).toBe('pontual');
-		expect(faixaDaChegada(15)).toBe('ate15');
-		expect(faixaDaChegada(30)).toBe('ate30');
-		expect(faixaDaChegada(31)).toBe('acima30');
+		expect(inicioDaSemana('2026-01-05')).toBe('2026-01-05');
 	});
 });

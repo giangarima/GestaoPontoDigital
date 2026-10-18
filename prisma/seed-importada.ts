@@ -79,7 +79,8 @@ export interface DadosJson {
 	jornadas: { nome: string; dias: unknown }[];
 	/**
 	 * Departamento e jornada são independentes no schema: a Loja reúne os dois
-	 * turnos da operação (abertura 08:30–17:20 e fechamento 10:00–19:00), que é
+	 * turnos da operação (abertura 08:30–17:20, intermediário 09:30–19:00 e
+	 * fechamento 10:00–19:00 — o intermediário entra em `corrigirJornadas`), que é
 	 * o caso que dá sentido a `PATCH /api/departamentos/:id/jornada` — aplicar
 	 * uma jornada a um departamento que tem mais de uma.
 	 */
@@ -166,6 +167,44 @@ function makeLedger() {
 	};
 }
 
+const DIAS_SEMANA = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
+
+/**
+ * Jornadas que o ACJEF de origem trazia erradas. Quem entra 09:30 (o turno
+ * intermediário da Loja e um caso do Financeiro) aparecia com a jornada de 08:30 ou
+ * 09:00 e virava atraso de quase uma hora todo dia. O horário veio do dono do negócio, não dos arquivos; as
+ * medianas das marcações confirmam (ex.: Adriana 09:46 · 13:00–14:30 · 18:56).
+ */
+const CORRECOES_DE_JORNADA = [
+	{
+		nome: '09:30–19:00, sábado até 13:30 (6 dias/semana)',
+		// 8h de segunda a sexta + 4h no sábado = 44h semanais (CF, art. 7º, XIII).
+		horario: { entrada: '09:30', saida_almoco: '13:30', retorno_almoco: '15:00', saida: '19:00' },
+		sabado: { entrada: '09:30', saida_almoco: '', retorno_almoco: '', saida: '13:30' },
+		colaboradores: ['Adriana Ramalho', 'Camila Peixoto', 'Fábio Quintanilha']
+	}
+];
+
+function corrigirJornadas(dados: DadosJson): void {
+	for (const c of CORRECOES_DE_JORNADA) {
+		const dias = Object.fromEntries(
+			DIAS_SEMANA.map((d) => [
+				d,
+				d === 'domingo'
+					? { ativo: false, entrada: '', saida_almoco: '', retorno_almoco: '', saida: '' }
+					: { ativo: true, ...(d === 'sabado' ? c.sabado : c.horario) }
+			])
+		);
+		dados.jornadas.push({ nome: c.nome, dias });
+		const indice = dados.jornadas.length - 1;
+		for (const nome of c.colaboradores) {
+			const colab = dados.colaboradores.find((x) => x.nome === nome);
+			if (!colab) throw new Error(`Correção de jornada: colaborador "${nome}" não está no seed`);
+			colab.jornada = indice;
+		}
+	}
+}
+
 function instanteBrt(dia: string, hora: string): Date {
 	return new Date(`${dia}T${hora}:00.000-03:00`);
 }
@@ -183,6 +222,7 @@ export async function seedEmpresaImportada(
 	const ledger = makeLedger();
 	const caminho = fileURLToPath(new URL('./seed-data/marcacoes.json', import.meta.url));
 	const dados = JSON.parse(readFileSync(caminho, 'utf-8')) as DadosJson;
+	corrigirJornadas(dados);
 	// O período real acaba em 19/09/2026; daí até agora, dias reais reamostrados.
 	const extensao = estenderDias(dados, new Date());
 	dados.dias.push(...extensao.dias);

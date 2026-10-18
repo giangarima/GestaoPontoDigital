@@ -1,19 +1,32 @@
 /**
  * @module lib/server/perfil/montar
- * @description Perfil do colaborador ao longo do tempo: pontualidade, assiduidade,
- * horas e local da batida, com a tendência por semana/mês e os padrões por dia da
- * semana. Puro — recebe a apuração do espelho (`apurarPeriodo`) e não recalcula
- * horas: os totais são os do espelho, então o perfil nunca diverge dele.
+ * @description Perfil do colaborador para o dono do negócio, em três alturas:
  *
- * Atraso usa `ATRASO_MIN`, o mesmo corte do painel e da tolerância do art. 58,
- * §1º. Ressalva: a inclusão do admin para uma batida esquecida costuma entrar no
- * horário previsto e esconde um possível atraso — por isso as inclusões aparecem
- * como indicador próprio na assiduidade.
+ * 1. **o dia** (hoje, ou o último dia com expediente): as batidas contra o
+ *    previsto, onde foi o atraso e uma leitura em uma frase;
+ * 2. **a semana** até esse dia, linha a linha;
+ * 3. **o período** (30d/3m/6m/12m até ontem) em quatro cards: presença,
+ *    pontualidade, onde atrasa e saldo de horas.
+ *
+ * Puro — recebe os dias já apurados pelo espelho (`apurarPeriodo`) e não refaz o
+ * cálculo de horas. Atraso usa `ATRASO_MIN`, o mesmo corte do painel e da
+ * tolerância do art. 58, §1º.
+ *
+ * **Dia com ajuste** (inclusão ou desconsideração do admin) fica fora da
+ * pontualidade e do saldo: a batida incluída costuma entrar no horário previsto e
+ * esconderia o atraso real. Por isso o saldo do perfil **não é o do espelho** — o
+ * card diz quantos dias ficaram fora da conta. Presença e faltas são as do espelho.
+ *
+ * Os textos não usam pronome: o sistema não sabe o gênero de ninguém.
  */
+import { somarDias } from '@/lib/server/feriado/calendario';
 import { marcacoesPrevistas } from '@/lib/server/jornada';
-import { ATRASO_MIN } from '@/lib/server/painel/montar';
-import { dataPura, diaDaDataPura, diaDe, type Dia } from '@/lib/server/periodo';
-import type { ApuracaoPeriodo, DiaEspelho } from '@/lib/server/espelho/montar';
+import { ATRASO_MIN, MARGEM_FALTA_MIN } from '@/lib/server/painel/montar';
+import { dataPura, diaDe, minutosDoDia, type Dia } from '@/lib/server/periodo';
+import type { DiaEspelho, HorarioEspelho } from '@/lib/server/espelho/montar';
+import { formatMinutos } from '@/utils/perfil';
+
+// ── Período ──────────────────────────────────────────────────────────────────
 
 export type PeriodoPerfil = '30d' | '3m' | '6m' | '12m';
 export const PERIODOS_PERFIL: PeriodoPerfil[] = ['30d', '3m', '6m', '12m'];
@@ -24,198 +37,245 @@ const DIAS_DO_PERIODO: Record<PeriodoPerfil, number> = {
 	'12m': 365
 };
 
-export type Granularidade = 'semana' | 'mes';
-
 export interface Intervalo {
 	inicio: Dia;
 	fim: Dia;
 }
 
-function somarDias(dia: Dia, n: number): Dia {
-	const d = dataPura(dia);
-	d.setUTCDate(d.getUTCDate() + n);
-	return diaDaDataPura(d);
+/** O período termina ontem: o dia corrente ainda está em andamento. */
+export function intervaloDoPeriodo(periodo: PeriodoPerfil, agora: Date): Intervalo {
+	const fim = somarDias(diaDe(agora), -1);
+	return { inicio: somarDias(fim, -(DIAS_DO_PERIODO[periodo] - 1)), fim };
 }
 
-/**
- * Período atual (até ontem — o dia corrente está em andamento) e o anterior, de
- * mesmo tamanho, logo antes dele.
- */
-export function intervalosDoPeriodo(
-	periodo: PeriodoPerfil,
-	agora: Date
-): { atual: Intervalo; anterior: Intervalo; granularidade: Granularidade } {
-	const n = DIAS_DO_PERIODO[periodo];
-	const fim = somarDias(diaDe(agora), -1);
-	const inicio = somarDias(fim, -(n - 1));
-	return {
-		atual: { inicio, fim },
-		anterior: { inicio: somarDias(inicio, -n), fim: somarDias(inicio, -1) },
-		granularidade: n <= 91 ? 'semana' : 'mes'
-	};
+/** Períodos que cabem no tempo de casa (30 dias sempre). */
+export function periodosDisponiveis(admissao: Dia | null, agora: Date): PeriodoPerfil[] {
+	return PERIODOS_PERFIL.filter(
+		(p) => p === '30d' || admissao === null || intervaloDoPeriodo(p, agora).inicio >= admissao
+	);
 }
 
 // ── Desvios do dia ───────────────────────────────────────────────────────────
 
 export interface DesviosDia {
-	/** 1ª válida − 1ª prevista, em minutos (negativo = adiantado). */
-	chegadaMin: number | null;
-	atraso: boolean;
-	/** Última prevista − última válida, se positiva (saiu antes). Só dia de par fechado. */
-	saidaAntecipadaMin: number | null;
-	/** Intervalo realizado − previsto (negativo = intervalo curto). Só com 4 e 4 marcações. */
-	intervaloDifMin: number | null;
+	/** 1ª válida − 1ª prevista (negativo = adiantado). */
+	entradaMin: number | null;
+	/**
+	 * Quanto a volta do intervalo passou do combinado: intervalo realizado − previsto.
+	 * Mede a duração, não o horário — quem saiu tarde para o almoço e voltou depois
+	 * do mesmo intervalo não atrasou a volta. Só em dia de 4 previstas e até 4 válidas.
+	 */
+	voltaMin: number | null;
+	/** Última válida − última prevista, com o par fechado (positivo = saiu depois). */
+	saidaMin: number | null;
+	/** Intervalo realizado (2ª → 3ª válida) e o previsto, nas mesmas condições da volta. */
+	intervaloMin: number | null;
+	intervaloPrevistoMin: number | null;
+	atrasoEntrada: boolean;
+	voltaAtrasada: boolean;
+	/** Intervalo mais de `ATRASO_MIN` abaixo do previsto (art. 71 da CLT). */
+	intervaloCurto: boolean;
 }
 
 const minutosEntre = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 60_000);
 
-/** Desvios contra o horário contratual do dia; tudo `null` quando o dia não se avalia. */
-export function desviosDoDia(dia: DiaEspelho, pares: [string, string][] | null): DesviosDia {
-	const vazio: DesviosDia = {
-		chegadaMin: null,
-		atraso: false,
-		saidaAntecipadaMin: null,
-		intervaloDifMin: null
+export function desviosDoDia(validas: Date[], previstas: Date[] | null): DesviosDia {
+	const d: DesviosDia = {
+		entradaMin: null,
+		voltaMin: null,
+		saidaMin: null,
+		intervaloMin: null,
+		intervaloPrevistoMin: null,
+		atrasoEntrada: false,
+		voltaAtrasada: false,
+		intervaloCurto: false
 	};
-	const validas = dia.marcacoes.filter((m) => !m.desconsiderada).map((m) => m.marcadoEm);
-	if (!pares || pares.length === 0 || validas.length === 0 || dia.ausenciaTipo) return vazio;
+	if (!previstas || previstas.length === 0 || validas.length === 0) return d;
 
-	const previstas = marcacoesPrevistas(dia.dia, pares);
-	const chegadaMin = minutosEntre(previstas[0], validas[0]);
-
-	const parFechado = validas.length % 2 === 0;
-	let saidaAntecipadaMin: number | null = null;
-	if (parFechado) {
-		const antes = minutosEntre(validas[validas.length - 1], previstas[previstas.length - 1]);
-		saidaAntecipadaMin = antes > ATRASO_MIN ? antes : null;
+	d.entradaMin = minutosEntre(previstas[0], validas[0]);
+	if (validas.length % 2 === 0) {
+		d.saidaMin = minutosEntre(previstas[previstas.length - 1], validas[validas.length - 1]);
 	}
-
-	let intervaloDifMin: number | null = null;
-	if (validas.length === 4 && previstas.length === 4) {
-		intervaloDifMin =
-			minutosEntre(validas[1], validas[2]) - minutosEntre(previstas[1], previstas[2]);
+	// Com mais de 4 marcações a 3ª já não é, necessariamente, a volta do intervalo.
+	if (previstas.length === 4 && validas.length >= 3 && validas.length <= 4) {
+		d.intervaloMin = minutosEntre(validas[1], validas[2]);
+		d.intervaloPrevistoMin = minutosEntre(previstas[1], previstas[2]);
+		d.voltaMin = d.intervaloMin - d.intervaloPrevistoMin;
 	}
-
-	return { chegadaMin, atraso: chegadaMin > ATRASO_MIN, saidaAntecipadaMin, intervaloDifMin };
+	d.atrasoEntrada = d.entradaMin > ATRASO_MIN;
+	d.voltaAtrasada = d.voltaMin !== null && d.voltaMin > ATRASO_MIN;
+	d.intervaloCurto =
+		d.intervaloMin !== null && d.intervaloMin < d.intervaloPrevistoMin! - ATRASO_MIN;
+	return d;
 }
 
-// ── Situação do dia (calendário) ─────────────────────────────────────────────
+// ── Detalhe de um dia ────────────────────────────────────────────────────────
 
-export type SituacaoDiaPerfil =
-	| 'no_horario'
-	| 'atraso'
-	| 'falta'
+export type SituacaoDia =
+	| 'normal'
+	/** Dia encerrado com marcação ímpar: falta uma batida. */
 	| 'aberto'
+	/** Dia corrente, ainda acontecendo. */
+	| 'em_andamento'
+	| 'falta'
 	| 'ausencia'
-	| 'folga'
-	| 'sem_jornada'
+	| 'feriado'
+	| 'sem_expediente'
 	| 'fora_vinculo';
 
-export function situacaoDoDia(dia: DiaEspelho, desvios: DesviosDia): SituacaoDiaPerfil {
-	if (dia.ocorrencia === 'Fora do vínculo') return 'fora_vinculo';
-	if (dia.ausenciaTipo) return 'ausencia';
-	if (dia.falta) return 'falta';
-	if (dia.ocorrencia === 'Incompleto') return 'aberto';
-	if (dia.contratualMin === null) return 'sem_jornada';
-	if (dia.contratualMin === 0) return 'folga';
-	return desvios.atraso ? 'atraso' : 'no_horario';
+export interface MarcacaoDetalhe {
+	/** "HH:MM" em Brasília. */
+	hora: string;
+	/** Incluída pelo admin no tratamento (fonte "I"). */
+	incluida: boolean;
 }
 
-// ── Resumo ───────────────────────────────────────────────────────────────────
-
-export interface ResumoPerfil {
-	pontualidade: {
-		/** Dias com expediente em que houve marcação (base do percentual). */
-		diasAvaliados: number;
-		diasComAtraso: number;
-		/** 0–100; `null` sem dia avaliado. */
-		percentualNoHorario: number | null;
-		/** Média só dos dias com atraso. */
-		atrasoMedioMin: number | null;
-		maiorAtrasoMin: number | null;
-		atrasoTotalMin: number;
-	};
-	assiduidade: {
-		diasPrevistos: number;
-		faltas: number;
-		diasEmAberto: number;
-		diasAtestado: number;
-		diasFerias: number;
-		diasOutrasAusencias: number;
-		/** Marcações lançadas pelo admin no tratamento (fonte "I"). */
-		inclusoes: number;
-		/** Marcações desconsideradas (anuladas) pelo admin. */
-		desconsideradas: number;
-	};
-	horas: {
-		realizadoMin: number;
-		previstoMin: number;
-		extraMin: number;
-		deficitMin: number;
-		saidasAntecipadas: number;
-		saidaAntecipadaMediaMin: number | null;
-		/** Intervalo mais de `ATRASO_MIN` abaixo do previsto (art. 71). */
-		intervalosCurtos: number;
-		intervalosLongos: number;
-	};
-	local: {
-		/** Marcações originais (fonte "O") do período. */
-		batidas: number;
-		/** Batidas com conferência de local (dentro/fora/sem_localizacao). */
-		conferidas: number;
-		fora: number;
-		semLocalizacao: number;
-	};
-}
-
-export interface PontoSerie {
-	/** Segunda-feira da semana ou "AAAA-MM". */
-	chave: string;
-	diasAvaliados: number;
-	diasComAtraso: number;
-	/** 0–100; `null` sem dia avaliado no bucket. */
-	percentualAtraso: number | null;
-	atrasoMedioMin: number | null;
-	faltas: number;
-}
-
-export interface PontoDiaSemana {
-	/** 0 = domingo … 6 = sábado. */
-	diaSemana: number;
-	diasAvaliados: number;
-	diasComAtraso: number;
-	percentualAtraso: number | null;
-	atrasoMedioMin: number | null;
-}
-
-export type FaixaChegada = 'antes' | 'pontual' | 'ate15' | 'ate30' | 'acima30';
-
-export interface DiaPerfil {
+export interface DiaDetalhe {
 	dia: Dia;
-	situacao: SituacaoDiaPerfil;
-	chegadaMin: number | null;
+	situacao: SituacaoDia;
+	/** Tipo da ausência aprovada (ferias, atestado, folga…), se houver. */
+	ausenciaTipo: string | null;
+	/** Nome do feriado, se houver. */
+	feriado: string | null;
+	/** Horário contratual do dia, "HH:MM". Vazio sem expediente. */
+	previstas: string[];
+	/** Marcações válidas (desconsideradas saem), em ordem. */
+	marcacoes: MarcacaoDetalhe[];
+	desvios: DesviosDia;
+	/** Houve inclusão ou desconsideração do admin no dia. */
+	ajuste: boolean;
+	realizadoMin: number;
+	/** 0 = sem expediente; null = sem jornada ou fora do vínculo. */
+	contratualMin: number | null;
+	/** Realizado do dia, ou `null` quando não é confiável (ajuste, batida faltando, em andamento). */
+	totalMin: number | null;
 }
 
-export interface Perfil {
-	semJornada: boolean;
-	resumo: ResumoPerfil;
-	serie: PontoSerie[];
-	porDiaSemana: PontoDiaSemana[];
-	chegada: Record<FaixaChegada, number>;
-	dias: DiaPerfil[];
+function hhmm(instante: Date): string {
+	const m = minutosDoDia(instante);
+	return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
-const media = (xs: number[]) =>
-	xs.length === 0 ? null : Math.round(xs.reduce((s, x) => s + x, 0) / xs.length);
-const percentual = (parte: number, todo: number) =>
-	todo === 0 ? null : Math.round((parte / todo) * 1000) / 10;
+function situacaoDe(d: DiaEspelho, validas: number, previstas: number, hoje: Dia): SituacaoDia {
+	if (d.ocorrencia === 'Fora do vínculo') return 'fora_vinculo';
+	if (d.ausenciaTipo) return 'ausencia';
+	if (d.falta) return 'falta';
+	// Dia corrente: em andamento até a pessoa fechar as marcações previstas.
+	if (d.dia >= hoje && (validas % 2 === 1 || validas < previstas)) return 'em_andamento';
+	if (validas % 2 === 1) return 'aberto';
+	if (validas === 0 && (d.contratualMin ?? 0) === 0)
+		return d.feriado ? 'feriado' : 'sem_expediente';
+	return 'normal';
+}
 
-export function faixaDaChegada(chegadaMin: number): FaixaChegada {
-	if (chegadaMin < -ATRASO_MIN) return 'antes';
-	if (chegadaMin <= ATRASO_MIN) return 'pontual';
-	if (chegadaMin <= 15) return 'ate15';
-	if (chegadaMin <= 30) return 'ate30';
-	return 'acima30';
+/** Detalha um dia apurado pelo espelho. `horarios` são os da mesma apuração. */
+export function detalharDia(d: DiaEspelho, horarios: HorarioEspelho[], hoje: Dia): DiaDetalhe {
+	const pares = d.horario ? (horarios.find((h) => h.codigo === d.horario)?.pares ?? null) : null;
+	const previstas = pares ? marcacoesPrevistas(d.dia, pares) : null;
+	const validas = d.marcacoes.filter((m) => !m.desconsiderada);
+	const situacao = situacaoDe(d, validas.length, previstas?.length ?? 0, hoje);
+	const ajuste = d.marcacoes.some((m) => m.fonte === 'I' || m.desconsiderada);
+	const confiavel = !ajuste && situacao !== 'aberto' && situacao !== 'em_andamento';
+	return {
+		dia: d.dia,
+		situacao,
+		ausenciaTipo: d.ausenciaTipo,
+		feriado: d.feriado?.nome ?? null,
+		previstas: (previstas ?? []).map(hhmm),
+		marcacoes: validas.map((m) => ({ hora: hhmm(m.marcadoEm), incluida: m.fonte === 'I' })),
+		desvios: desviosDoDia(
+			validas.map((m) => m.marcadoEm),
+			previstas
+		),
+		ajuste,
+		realizadoMin: d.realizadoMin,
+		contratualMin: d.contratualMin,
+		totalMin: confiavel && validas.length > 0 ? d.realizadoMin : null
+	};
+}
+
+const temExpediente = (d: DiaDetalhe) => (d.contratualMin ?? 0) > 0;
+
+// ── Dia de referência ────────────────────────────────────────────────────────
+
+export interface DiaReferencia {
+	/** "hoje" ou o último dia com expediente ("ultimo"), quando hoje não tem. */
+	rotulo: 'hoje' | 'ultimo';
+	dia: DiaDetalhe;
+}
+
+/**
+ * Hoje, se tem expediente e não é ausência; senão o último dia anterior com
+ * expediente ou com marcação (fora de ausência). `dias` em ordem crescente.
+ */
+export function diaDeReferencia(dias: DiaDetalhe[], hoje: Dia): DiaReferencia | null {
+	const util = (d: DiaDetalhe) =>
+		d.situacao !== 'ausencia' &&
+		d.situacao !== 'fora_vinculo' &&
+		(temExpediente(d) || d.marcacoes.length > 0);
+	const doDia = dias.find((d) => d.dia === hoje);
+	if (doDia && util(doDia)) return { rotulo: 'hoje', dia: doDia };
+	const anterior = [...dias].reverse().find((d) => d.dia < hoje && util(d));
+	return anterior ? { rotulo: 'ultimo', dia: anterior } : null;
+}
+
+export type Tom = 'ok' | 'aviso' | 'alerta' | 'neutro';
+
+export interface Chip {
+	texto: string;
+	tom: Tom;
+}
+
+/** Situação do dia de referência em poucas palavras, para o canto do card. */
+export function chipDoDia(d: DiaDetalhe, agora: Date): Chip {
+	const { desvios } = d;
+	if (d.situacao === 'falta') return { texto: 'Falta', tom: 'alerta' };
+	if (d.situacao === 'aberto') return { texto: 'Batida faltando', tom: 'aviso' };
+	if (d.situacao === 'em_andamento' && d.marcacoes.length === 0) {
+		// Mesmo critério do painel: até MARGEM_FALTA_MIN depois da entrada não é falta.
+		const prevista = d.previstas[0];
+		const passou = minutosDoDia(agora) - minutosDoHorario(prevista);
+		if (passou > MARGEM_FALTA_MIN)
+			return { texto: `Falta provável · previsto ${prevista}`, tom: 'alerta' };
+		if (passou > ATRASO_MIN)
+			return { texto: `Sem entrada até agora · previsto ${prevista}`, tom: 'aviso' };
+		return { texto: `Entrada prevista às ${prevista}`, tom: 'neutro' };
+	}
+	if (desvios.atrasoEntrada && desvios.voltaAtrasada)
+		return { texto: 'Atraso na entrada e na volta do intervalo', tom: 'aviso' };
+	if (desvios.atrasoEntrada)
+		return { texto: `Atraso de ${formatMinutos(desvios.entradaMin!)} na entrada`, tom: 'aviso' };
+	if (desvios.voltaAtrasada)
+		return {
+			texto: `Volta do intervalo ${formatMinutos(desvios.voltaMin!)} atrasada`,
+			tom: 'aviso'
+		};
+	if (desvios.intervaloCurto)
+		return { texto: `Intervalo curto (${formatMinutos(desvios.intervaloMin!)})`, tom: 'aviso' };
+	if (d.situacao === 'em_andamento') return { texto: 'Em andamento', tom: 'neutro' };
+	if (!temExpediente(d)) return { texto: 'Dia sem expediente', tom: 'neutro' };
+	return { texto: 'No horário', tom: 'ok' };
+}
+
+function minutosDoHorario(hhmm: string): number {
+	const [h, m] = hhmm.split(':').map(Number);
+	return h * 60 + m;
+}
+
+// ── Semana ───────────────────────────────────────────────────────────────────
+
+export interface SemanaPerfil {
+	inicio: Dia;
+	fim: Dia;
+	dias: DiaDetalhe[];
+	/** Realizado e previsto só dos dias confiáveis (e das faltas). */
+	realizadoMin: number;
+	previstoMin: number;
+	/** Dias encerrados que ficaram fora do total: ajuste ou batida faltando. */
+	diasForaDaConta: number;
+	atrasosEntrada: number;
+	voltasAtrasadas: number;
+	faltas: number;
 }
 
 /** Segunda-feira da semana do dia. */
@@ -224,149 +284,233 @@ export function inicioDaSemana(dia: Dia): Dia {
 	return somarDias(dia, -((dow + 6) % 7));
 }
 
-interface DiaAvaliado {
-	dia: DiaEspelho;
-	desvios: DesviosDia;
-}
-
-function agregarAtrasos(avaliados: DiaAvaliado[]) {
-	const comMarcacao = avaliados.filter((a) => a.desvios.chegadaMin !== null);
-	const atrasos = comMarcacao.filter((a) => a.desvios.atraso).map((a) => a.desvios.chegadaMin!);
+/** Da segunda até o dia de referência. Sem linha para dia sem expediente e sem batida. */
+export function montarSemana(dias: DiaDetalhe[], ref: Dia): SemanaPerfil {
+	const inicio = inicioDaSemana(ref);
+	const daSemana = dias.filter(
+		(d) =>
+			d.dia >= inicio &&
+			d.dia <= ref &&
+			d.situacao !== 'fora_vinculo' &&
+			(d.situacao !== 'sem_expediente' || d.marcacoes.length > 0)
+	);
+	let realizadoMin = 0;
+	let previstoMin = 0;
+	let diasForaDaConta = 0;
+	for (const d of daSemana) {
+		if (d.situacao === 'falta') {
+			previstoMin += d.contratualMin ?? 0;
+		} else if (d.totalMin !== null) {
+			realizadoMin += d.totalMin;
+			previstoMin += d.contratualMin ?? 0;
+		} else if (d.marcacoes.length > 0 && d.situacao !== 'em_andamento') {
+			diasForaDaConta++;
+		}
+	}
 	return {
-		diasAvaliados: comMarcacao.length,
-		diasComAtraso: atrasos.length,
-		percentualAtraso: percentual(atrasos.length, comMarcacao.length),
-		atrasoMedioMin: media(atrasos)
+		inicio,
+		fim: ref,
+		dias: daSemana,
+		realizadoMin,
+		previstoMin,
+		diasForaDaConta,
+		atrasosEntrada: daSemana.filter((d) => d.desvios.atrasoEntrada).length,
+		voltasAtrasadas: daSemana.filter((d) => d.desvios.voltaAtrasada).length,
+		faltas: daSemana.filter((d) => d.situacao === 'falta').length
 	};
 }
+
+// ── Cards do período ─────────────────────────────────────────────────────────
+
+export interface CardsPerfil {
+	presenca: {
+		diasComMarcacao: number;
+		/** Dias com expediente, no vínculo e sem ausência (os do espelho). */
+		diasPrevistos: number;
+		faltas: number;
+		percentual: number | null;
+		/** O que não conta como dia previsto. */
+		ferias: number;
+		atestado: number;
+		outrasAusencias: number;
+		/** Dias sem expediente na jornada (DSR, folga, feriado) e folga compensatória. */
+		folgas: number;
+	};
+	pontualidade: {
+		/** Dias com marcação e sem ajuste do admin. */
+		diasAvaliados: number;
+		/** Sem atraso na entrada nem na volta do intervalo. */
+		diasSemAtraso: number;
+		percentual: number | null;
+	};
+	ondeAtrasa: {
+		onde: 'entrada' | 'volta' | 'ambos' | 'nenhum';
+		entradas: number;
+		voltas: number;
+		/** Mediana dos atrasos (só os dias com atraso). */
+		tipicoEntradaMin: number | null;
+		tipicoVoltaMin: number | null;
+	};
+	saldo: {
+		realizadoMin: number;
+		previstoMin: number;
+		saldoMin: number;
+		/** Dias com marcação que ficaram fora da conta. */
+		diasComAjuste: number;
+		diasComBatidaFaltando: number;
+	};
+	/** Base da leitura do dia. */
+	padrao: {
+		diasComAtraso: number;
+		/** Nos dias de atraso na entrada, a saída passa do previsto em ao menos metade do atraso. */
+		compensaNaSaida: boolean;
+	};
+}
+
+const percentual = (parte: number, todo: number) =>
+	todo === 0 ? null : Math.round((parte / todo) * 1000) / 10;
+
+function mediana(xs: number[]): number | null {
+	if (xs.length === 0) return null;
+	const o = [...xs].sort((a, b) => a - b);
+	const meio = Math.floor(o.length / 2);
+	return o.length % 2 ? o[meio] : Math.round((o[meio - 1] + o[meio]) / 2);
+}
+
+const media = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+
+/** Dias seguidos de atraso na entrada antes de dizer que a pessoa "costuma" compensar. */
+const MIN_DIAS_PADRAO = 3;
+
+export function montarCards(dias: DiaDetalhe[]): CardsPerfil {
+	const noVinculo = dias.filter((d) => d.situacao !== 'fora_vinculo');
+	const previstos = noVinculo.filter((d) => temExpediente(d) && d.situacao !== 'ausencia');
+	const comMarcacao = previstos.filter((d) => d.marcacoes.length > 0);
+	const faltas = previstos.filter((d) => d.situacao === 'falta').length;
+	const ausencia = (tipo: string) =>
+		noVinculo.filter((d) => d.situacao === 'ausencia' && d.ausenciaTipo === tipo).length;
+
+	const avaliados = noVinculo.filter(
+		(d) => d.marcacoes.length > 0 && !d.ajuste && d.desvios.entradaMin !== null
+	);
+	const atrasosEntrada = avaliados.filter((d) => d.desvios.atrasoEntrada);
+	const voltasAtrasadas = avaliados.filter((d) => d.desvios.voltaAtrasada);
+	const comAtraso = avaliados.filter((d) => d.desvios.atrasoEntrada || d.desvios.voltaAtrasada);
+
+	const entradas = atrasosEntrada.length;
+	const voltas = voltasAtrasadas.length;
+	let onde: CardsPerfil['ondeAtrasa']['onde'] = 'nenhum';
+	if (entradas > 0 || voltas > 0) {
+		if (entradas >= 2 * voltas) onde = 'entrada';
+		else if (voltas >= 2 * entradas) onde = 'volta';
+		else onde = 'ambos';
+	}
+
+	// Saldo: dias encerrados sem ajuste nem batida faltando; a falta entra como déficit.
+	let realizadoMin = 0;
+	let previstoMin = 0;
+	let diasComAjuste = 0;
+	let diasComBatidaFaltando = 0;
+	for (const d of noVinculo) {
+		if (d.situacao === 'ausencia') continue;
+		if (d.situacao === 'falta') {
+			previstoMin += d.contratualMin ?? 0;
+		} else if (d.marcacoes.length === 0) {
+			continue;
+		} else if (d.ajuste) {
+			diasComAjuste++;
+		} else if (d.situacao === 'aberto') {
+			diasComBatidaFaltando++;
+		} else if (d.totalMin !== null) {
+			realizadoMin += d.totalMin;
+			previstoMin += d.contratualMin ?? 0;
+		}
+	}
+
+	const compensacao = atrasosEntrada.filter((d) => d.desvios.saidaMin !== null);
+	const compensaNaSaida =
+		compensacao.length >= MIN_DIAS_PADRAO &&
+		media(compensacao.map((d) => d.desvios.saidaMin!)) >=
+			media(compensacao.map((d) => d.desvios.entradaMin!)) / 2;
+
+	return {
+		presenca: {
+			diasComMarcacao: comMarcacao.length,
+			diasPrevistos: previstos.length,
+			faltas,
+			percentual: percentual(comMarcacao.length, previstos.length),
+			ferias: ausencia('ferias'),
+			atestado: ausencia('atestado'),
+			outrasAusencias: noVinculo.filter(
+				(d) =>
+					d.situacao === 'ausencia' && !['ferias', 'atestado', 'folga'].includes(d.ausenciaTipo!)
+			).length,
+			folgas:
+				ausencia('folga') +
+				noVinculo.filter((d) => d.contratualMin === 0 && d.situacao !== 'ausencia').length
+		},
+		pontualidade: {
+			diasAvaliados: avaliados.length,
+			diasSemAtraso: avaliados.length - comAtraso.length,
+			percentual: percentual(avaliados.length - comAtraso.length, avaliados.length)
+		},
+		ondeAtrasa: {
+			onde,
+			entradas,
+			voltas,
+			tipicoEntradaMin: mediana(atrasosEntrada.map((d) => d.desvios.entradaMin!)),
+			tipicoVoltaMin: mediana(voltasAtrasadas.map((d) => d.desvios.voltaMin!))
+		},
+		saldo: {
+			realizadoMin,
+			previstoMin,
+			saldoMin: realizadoMin - previstoMin,
+			diasComAjuste,
+			diasComBatidaFaltando
+		},
+		padrao: { diasComAtraso: comAtraso.length, compensaNaSaida }
+	};
+}
+
+// ── Leitura do dia ───────────────────────────────────────────────────────────
 
 /**
- * Monta o perfil de um período. `apuracao` é a do espelho só desse período;
- * `localizacoes` são as `Registro.localizacao` das marcações originais dele.
+ * Uma ou duas frases sobre o dia de referência à luz do período. Vazia quando o
+ * dia não tem o que comentar.
  */
-export function montarPerfil(
-	apuracao: ApuracaoPeriodo,
-	localizacoes: (string | null)[],
-	granularidade: Granularidade
-): Perfil {
-	const paresDoHorario = new Map(apuracao.horarios.map((h) => [h.codigo, h.pares]));
-	const todos: DiaAvaliado[] = apuracao.dias.map((dia) => ({
-		dia,
-		desvios: desviosDoDia(dia, dia.horario ? (paresDoHorario.get(dia.horario) ?? null) : null)
-	}));
-	// Base da pontualidade: dia com expediente, no vínculo, sem ausência.
-	const comExpediente = todos.filter(
-		(a) =>
-			(a.dia.contratualMin ?? 0) > 0 &&
-			!a.dia.ausenciaTipo &&
-			a.dia.ocorrencia !== 'Fora do vínculo'
-	);
+export function leituraDoDia(d: DiaDetalhe, cards: CardsPerfil): string {
+	const { desvios } = d;
+	const { ondeAtrasa, padrao } = cards;
+	const frases: string[] = [];
 
-	const atraso = agregarAtrasos(comExpediente);
-	const minutosAtraso = comExpediente
-		.filter((a) => a.desvios.atraso)
-		.map((a) => a.desvios.chegadaMin!);
-
-	const contaAusencia = (tipo: string | null) =>
-		apuracao.dias.filter((d) =>
-			tipo === null
-				? d.ausenciaTipo !== null && !['atestado', 'ferias'].includes(d.ausenciaTipo)
-				: d.ausenciaTipo === tipo
-		).length;
-	const marcacoes = apuracao.dias.flatMap((d) => d.marcacoes);
-
-	const saidas = comExpediente
-		.map((a) => a.desvios.saidaAntecipadaMin)
-		.filter((m): m is number => m !== null);
-	const intervalos = comExpediente
-		.map((a) => a.desvios.intervaloDifMin)
-		.filter((m): m is number => m !== null);
-
-	const conferidas = localizacoes.filter(
-		(l) => l === 'dentro' || l === 'fora' || l === 'sem_localizacao'
-	);
-
-	const resumo: ResumoPerfil = {
-		pontualidade: {
-			diasAvaliados: atraso.diasAvaliados,
-			diasComAtraso: atraso.diasComAtraso,
-			percentualNoHorario:
-				atraso.percentualAtraso === null
-					? null
-					: Math.round((100 - atraso.percentualAtraso) * 10) / 10,
-			atrasoMedioMin: atraso.atrasoMedioMin,
-			maiorAtrasoMin: minutosAtraso.length ? Math.max(...minutosAtraso) : null,
-			atrasoTotalMin: minutosAtraso.reduce((s, m) => s + m, 0)
-		},
-		assiduidade: {
-			diasPrevistos: apuracao.totais.diasPrevistos,
-			faltas: apuracao.totais.faltas,
-			diasEmAberto: apuracao.totais.diasEmAberto,
-			diasAtestado: contaAusencia('atestado'),
-			diasFerias: contaAusencia('ferias'),
-			diasOutrasAusencias: contaAusencia(null),
-			inclusoes: marcacoes.filter((m) => m.fonte === 'I').length,
-			desconsideradas: marcacoes.filter((m) => m.desconsiderada).length
-		},
-		horas: {
-			realizadoMin: apuracao.totais.realizadoMin,
-			previstoMin: apuracao.totais.previstoMin,
-			extraMin: apuracao.totais.extraMin,
-			deficitMin: apuracao.totais.deficitMin,
-			saidasAntecipadas: saidas.length,
-			saidaAntecipadaMediaMin: media(saidas),
-			intervalosCurtos: intervalos.filter((d) => d < -ATRASO_MIN).length,
-			intervalosLongos: intervalos.filter((d) => d > ATRASO_MIN).length
-		},
-		local: {
-			batidas: localizacoes.length,
-			conferidas: conferidas.length,
-			fora: conferidas.filter((l) => l === 'fora').length,
-			semLocalizacao: conferidas.filter((l) => l === 'sem_localizacao').length
-		}
+	/** "como em 20 dos 21 dias…", "como em todos os 3 dias…", "no período houve 1 dia…". */
+	const frequencia = (onde: string, k: number) => {
+		const n = padrao.diasComAtraso;
+		if (n === 0) return `O atraso foi ${onde}; no período não houve outro.`;
+		if (n === 1) return `O atraso foi ${onde}; no período houve 1 dia com atraso.`;
+		if (k === n) return `O atraso foi ${onde}, como em todos os ${n} dias com atraso do período.`;
+		return `O atraso foi ${onde}, como em ${k} dos ${n} dias com atraso do período.`;
 	};
 
-	// Série: um ponto por semana/mês, inclusive os vazios, para o eixo não pular.
-	const chaveDe = (dia: Dia) => (granularidade === 'mes' ? dia.slice(0, 7) : inicioDaSemana(dia));
-	const avaliaveis = new Set(comExpediente);
-	const baldes = new Map<string, DiaAvaliado[]>();
-	for (const a of todos) {
-		const chave = chaveDe(a.dia.dia);
-		if (!baldes.has(chave)) baldes.set(chave, []);
-		if (avaliaveis.has(a)) baldes.get(chave)!.push(a);
+	if (desvios.atrasoEntrada && desvios.voltaAtrasada) {
+		frases.push('Atrasou na entrada e na volta do intervalo.');
+	} else if (desvios.atrasoEntrada) {
+		frases.push(frequencia('na entrada', ondeAtrasa.entradas));
+	} else if (desvios.voltaAtrasada) {
+		frases.push(frequencia('na volta do intervalo', ondeAtrasa.voltas));
 	}
-	const serie: PontoSerie[] = [...baldes.entries()].map(([chave, itens]) => ({
-		chave,
-		...agregarAtrasos(itens),
-		faltas: itens.filter((a) => a.dia.falta).length
-	}));
-
-	const porDiaSemana: PontoDiaSemana[] = Array.from({ length: 7 }, (_, diaSemana) => ({
-		diaSemana,
-		...agregarAtrasos(comExpediente.filter((a) => dataPura(a.dia.dia).getUTCDay() === diaSemana))
-	}));
-
-	const chegada: Record<FaixaChegada, number> = {
-		antes: 0,
-		pontual: 0,
-		ate15: 0,
-		ate30: 0,
-		acima30: 0
-	};
-	for (const a of comExpediente) {
-		if (a.desvios.chegadaMin !== null) chegada[faixaDaChegada(a.desvios.chegadaMin)]++;
+	if (desvios.atrasoEntrada && padrao.compensaNaSaida) {
+		frases.push(
+			'Costuma sair mais tarde para compensar: vale confirmar se esse horário foi combinado.'
+		);
 	}
-
-	return {
-		semJornada: apuracao.semJornada,
-		resumo,
-		serie,
-		porDiaSemana,
-		chegada,
-		dias: todos.map((a) => ({
-			dia: a.dia.dia,
-			situacao: situacaoDoDia(a.dia, a.desvios),
-			chegadaMin: a.desvios.chegadaMin
-		}))
-	};
+	if (desvios.intervaloCurto) {
+		frases.push(
+			`O intervalo foi de ${formatMinutos(desvios.intervaloMin!)}, abaixo dos ${formatMinutos(desvios.intervaloPrevistoMin!)} previstos (art. 71 da CLT).`
+		);
+	}
+	if (d.situacao === 'aberto') {
+		frases.push('Falta uma batida no dia: o lançamento é feito em Ajustes.');
+	}
+	return frases.join(' ');
 }

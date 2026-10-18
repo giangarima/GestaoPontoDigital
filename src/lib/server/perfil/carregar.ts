@@ -1,24 +1,37 @@
 /**
  * @module lib/server/perfil/carregar
  * @description Carrega do banco o perfil de um colaborador (regras em `montar.ts`).
- * Uma consulta de espelho cobre o período atual e o anterior; cada um é apurado
- * separado por `apurarPeriodo`, então os totais são os mesmos do espelho daquele
- * intervalo. O banco de horas vem de `carregarExtratoBanco` (ciclo atual).
+ * Uma consulta de espelho cobre o período e a janela recente; cada um é apurado
+ * separado por `apurarPeriodo`:
+ *
+ * - o **período** (até ontem) alimenta os quatro cards;
+ * - a **janela** das últimas três semanas até hoje alimenta o dia de referência
+ *   (hoje ou o último dia com expediente) e a semana dele.
  */
 import { prisma } from '@/lib/server/db';
 import { carregarEspelho } from '@/lib/server/espelho/gerar';
-import { apurarPeriodo } from '@/lib/server/espelho/montar';
-import { carregarExtratoBanco } from '@/lib/server/banco-horas/carregar';
+import { apurarPeriodo, type ApuracaoPeriodo } from '@/lib/server/espelho/montar';
+import { somarDias } from '@/lib/server/feriado/calendario';
 import { diaDaDataPura, diaDe, type Dia } from '@/lib/server/periodo';
 import {
-	intervalosDoPeriodo,
-	montarPerfil,
-	type Granularidade,
+	chipDoDia,
+	detalharDia,
+	diaDeReferencia,
+	intervaloDoPeriodo,
+	leituraDoDia,
+	montarCards,
+	montarSemana,
+	periodosDisponiveis,
+	type CardsPerfil,
+	type Chip,
+	type DiaReferencia,
 	type Intervalo,
-	type Perfil,
 	type PeriodoPerfil,
-	type ResumoPerfil
+	type SemanaPerfil
 } from './montar';
+
+/** Quantos dias para trás procurar o último dia com expediente. */
+const JANELA_DIAS = 21;
 
 export interface PerfilColaborador {
 	colaborador: {
@@ -31,15 +44,15 @@ export interface PerfilColaborador {
 		/** Dia do desligamento (soft delete), se houver. */
 		desligamento: Dia | null;
 	};
+	semJornada: boolean;
+	/** Hoje ou o último dia com expediente; `null` se não houve nenhum na janela. */
+	dia: (DiaReferencia & { chip: Chip; leitura: string }) | null;
+	semana: SemanaPerfil | null;
 	periodo: PeriodoPerfil;
-	granularidade: Granularidade;
-	atual: Intervalo;
-	anterior: Intervalo;
-	perfil: Perfil;
-	/** Só o resumo do período anterior — base das variações. */
-	resumoAnterior: ResumoPerfil;
-	/** Ciclo atual do banco de horas; `null` se a empresa não usa banco. */
-	banco: { inicio: Dia; fim: Dia; saldoMin: number } | null;
+	intervalo: Intervalo;
+	/** Períodos que cabem no tempo de casa. */
+	periodosDisponiveis: PeriodoPerfil[];
+	cards: CardsPerfil;
 }
 
 /** `null` se o colaborador não existe ou é de outra empresa. */
@@ -49,10 +62,13 @@ export async function carregarPerfil(
 	periodo: PeriodoPerfil,
 	agora: Date = new Date()
 ): Promise<PerfilColaborador | null> {
-	const { atual, anterior, granularidade } = intervalosDoPeriodo(periodo, agora);
+	const hoje = diaDe(agora);
+	const intervalo = intervaloDoPeriodo(periodo, agora);
+	const janela: Intervalo = { inicio: somarDias(hoje, -JANELA_DIAS), fim: hoje };
+	const inicioCarga = intervalo.inicio < janela.inicio ? intervalo.inicio : janela.inicio;
 
-	const [carga, cabecalho, extrato] = await Promise.all([
-		carregarEspelho(empresaId, colaboradorId, anterior.inicio, atual.fim, agora),
+	const [carga, cabecalho] = await Promise.all([
+		carregarEspelho(empresaId, colaboradorId, inicioCarga, hoje, agora),
 		prisma.colaborador.findFirst({
 			where: { id: colaboradorId, empresaId },
 			select: {
@@ -63,12 +79,11 @@ export async function carregarPerfil(
 				departamento: { select: { nome: true } },
 				jornada: { select: { nome: true } }
 			}
-		}),
-		carregarExtratoBanco(empresaId, colaboradorId, agora)
+		})
 	]);
 	if (!carga || !cabecalho) return null;
 
-	const { entrada, registros } = carga;
+	const { entrada } = carga;
 	const apurar = (i: Intervalo) =>
 		apurarPeriodo({
 			...entrada,
@@ -77,21 +92,13 @@ export async function carregarPerfil(
 			admissao: entrada.trabalhador.admissao,
 			desligamento: entrada.trabalhador.desligamento
 		});
-	const localizacoes = (i: Intervalo) =>
-		registros
-			.filter((r) => r.fonte === 'O')
-			.filter((r) => {
-				const dia = diaDe(r.marcadoEm);
-				return dia >= i.inicio && dia <= i.fim;
-			})
-			.map((r) => r.localizacao);
+	const detalhar = (ap: ApuracaoPeriodo) => ap.dias.map((d) => detalharDia(d, ap.horarios, hoje));
 
-	const perfil = montarPerfil(apurar(atual), localizacoes(atual), granularidade);
-	const resumoAnterior = montarPerfil(
-		apurar(anterior),
-		localizacoes(anterior),
-		granularidade
-	).resumo;
+	const apPeriodo = apurar(intervalo);
+	const cards = montarCards(detalhar(apPeriodo));
+	const recentes = detalhar(apurar(janela));
+	const ref = diaDeReferencia(recentes, hoje);
+	const admissao = cabecalho.dataAdmissao ? diaDaDataPura(cabecalho.dataAdmissao) : null;
 
 	return {
 		colaborador: {
@@ -100,17 +107,17 @@ export async function carregarPerfil(
 			cargo: cabecalho.cargo,
 			departamento: cabecalho.departamento?.nome ?? null,
 			jornada: cabecalho.jornada?.nome ?? null,
-			admissao: cabecalho.dataAdmissao ? diaDaDataPura(cabecalho.dataAdmissao) : null,
+			admissao,
 			desligamento: cabecalho.deletedAt ? diaDe(cabecalho.deletedAt) : null
 		},
+		semJornada: apPeriodo.semJornada,
+		dia: ref
+			? { ...ref, chip: chipDoDia(ref.dia, agora), leitura: leituraDoDia(ref.dia, cards) }
+			: null,
+		semana: ref ? montarSemana(recentes, ref.dia.dia) : null,
 		periodo,
-		granularidade,
-		atual,
-		anterior,
-		perfil,
-		resumoAnterior,
-		banco: extrato?.ciclo
-			? { inicio: extrato.ciclo.inicio, fim: extrato.ciclo.fim, saldoMin: extrato.ciclo.saldoMin }
-			: null
+		intervalo,
+		periodosDisponiveis: periodosDisponiveis(admissao, agora),
+		cards
 	};
 }
