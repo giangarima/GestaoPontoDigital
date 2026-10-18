@@ -17,9 +17,10 @@
  *    para os demais o dia é sem expediente — nem falta, nem déficit, fora do
  *    previsto, e o que se trabalhar nele é extra.
  *
- * PURO (sem Prisma) — ver `carregar.ts` para a carga do banco.
+ * PURO (sem Prisma nem alias `@/`, para o seed também usar) — ver `carregar.ts`
+ * para a carga do banco.
  */
-import { dataPura, diaDaDataPura, type Dia } from '@/lib/server/periodo';
+import { dataPura, diaDaDataPura, type Dia } from '../periodo';
 
 export type TipoFeriado = 'feriado' | 'ponto_facultativo';
 export type Abrangencia = 'nacional' | 'estadual' | 'municipal';

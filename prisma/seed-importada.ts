@@ -37,11 +37,19 @@
  * outro, gerando 16h de "extra") e 1 de uma tolerância que absorvia 31 min num
  * dia — além do limite do art. 58, §1º lido com a Súmula 366 do TST.
  *
+ * ## Depois de 19/09/2026
+ *
+ * O período real acaba aí. Do dia seguinte até o instante em que o seed roda, os
+ * dias são **reamostrados** dos dias reais de cada colaborador (`seed-extensao.ts`):
+ * cada dia novo é a cópia de um dia real da mesma pessoa, no mesmo dia da semana,
+ * e a falta segue a taxa dela. Esses dias não vêm do AFDT; servem para o banco de
+ * demonstração ter dias recentes.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { PrismaClient } from '../src/lib/server/prisma-client/client';
 import { hashRegistro } from '../src/lib/server/registro-hash';
+import { estenderDias } from './seed-extensao';
 
 /** Rótulos de `Registro.tipo`, referenciados por índice no arquivo de dados. */
 const TIPOS = ['entrada', 'saida_almoco', 'retorno_almoco', 'saida'] as const;
@@ -61,13 +69,13 @@ interface MarcacaoJson {
 }
 
 /** Marcações de um colaborador (`c`, índice) num dia (`d`, AAAA-MM-DD). */
-interface DiaJson {
+export interface DiaJson {
 	c: number;
 	d: string;
 	m: MarcacaoJson[];
 }
 
-interface DadosJson {
+export interface DadosJson {
 	jornadas: { nome: string; dias: unknown }[];
 	/**
 	 * Departamento e jornada são independentes no schema: a Loja reúne os dois
@@ -126,6 +134,8 @@ export interface ResumoImportada {
 	anulacoes: number;
 	ausencias: number;
 	ultimoNsr: bigint;
+	/** Dias reamostrados depois do período real (`seed-extensao.ts`). */
+	extensao: { dias: number; de: string | null; ate: string | null };
 }
 
 /**
@@ -173,6 +183,9 @@ export async function seedEmpresaImportada(
 	const ledger = makeLedger();
 	const caminho = fileURLToPath(new URL('./seed-data/marcacoes.json', import.meta.url));
 	const dados = JSON.parse(readFileSync(caminho, 'utf-8')) as DadosJson;
+	// O período real acaba em 19/09/2026; daí até agora, dias reais reamostrados.
+	const extensao = estenderDias(dados, new Date());
+	dados.dias.push(...extensao.dias);
 
 	const empresa = await prisma.empresa.create({
 		data: {
@@ -423,6 +436,7 @@ export async function seedEmpresaImportada(
 		inclusoes: inclusoes.length,
 		anulacoes: totalAnulacoes,
 		ausencias: dados.ausencias.length,
-		ultimoNsr: ledger.total
+		ultimoNsr: ledger.total,
+		extensao: { dias: extensao.dias.length, de: extensao.de, ate: extensao.ate }
 	};
 }

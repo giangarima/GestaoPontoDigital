@@ -12,8 +12,10 @@
  *
  * Misturar os dois — ex.: limitar o período das batidas com `T00:00Z` — desloca
  * 3 h e joga as batidas noturnas no dia seguinte.
+ *
+ * Import relativo de propósito: o seed (via tsx, sem os aliases) usa este módulo.
  */
-import { toD } from '@/lib/server/afd/format';
+import { toD } from './afd/format';
 
 /** Dia de calendário no formato `AAAA-MM-dd`. */
 export type Dia = string;

@@ -20,7 +20,8 @@ npm run test:db      # testes de integração: sobe postgres-test (docker, porta
                      # recria o schema via migrate deploy e roda tests/db/ (recusa banco não-local)
 npm run test:all     # os dois
 npm run db:migrate   # cria/aplica migration (após mudar schema.prisma)
-npm run db:seed      # popula a Empresa 1: 21 colaboradores (7 desligados), 6.760 marcações
+npm run db:seed      # popula a Empresa 1: 21 colaboradores (7 desligados), 6.760 marcações reais
+                     # (21/03–19/09/2026) + dias reamostrados até o instante do seed
 npm run db:studio    # abre Prisma Studio
 npm run db:reset     # reseta DB e roda seed
 ```
@@ -122,6 +123,16 @@ ocorrência que o admin mais precisa enxergar.
 **Banco de horas no seed**: regime semestral desde 01/03/2026 — o ciclo de março a agosto já venceu
 (com saldos a pagar e zerados) e o de setembro está aberto. **Escala de folga não entra no seed**: o
 AFDT não permite inferir rodízio de folga com segurança.
+
+**Depois de 19/09/2026** (`prisma/seed-extensao.ts`): do dia seguinte ao último real até o
+instante em que o seed roda, cada dia é a **cópia de um dia real do mesmo colaborador, no mesmo
+dia da semana** (horários, inclusões com motivo, desconsideradas e batida esquecida vêm juntos), e a
+falta segue a taxa da própria pessoa no período real. Ficam de fora desligados, dias sem expediente
+na jornada, feriados nacionais (12/10) e dias de ausência já cadastrada; ausências novas não se
+inventam. O sorteio é determinístico por colaborador e dia, então rodar de novo reproduz os mesmos
+dias e rodar mais tarde só acrescenta. No dia corrente entram só as marcações até agora. Os números
+acima (marcações, dias em aberto, faltas) são do período real; o seed imprime o total com a extensão.
+Por isso `periodo.ts` e `feriado/calendario.ts` importam de forma relativa (o tsx do seed não resolve `@/`).
 
 **O seed não cobre**: ajuste vinculado (`registroSubstitutoId`), que não existe nos arquivos
 de origem. Esse caminho está coberto por testes (`tests/db/`), não por dados de seed.

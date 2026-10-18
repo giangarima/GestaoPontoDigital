@@ -86,6 +86,12 @@ async function main() {
 			`${r.originais} batidas, ${r.inclusoes} inclusões, ${r.anulacoes} anulações, ` +
 			`${r.ausencias} ausências (NSR 1..${r.ultimoNsr}).`
 	);
+	if (r.extensao.dias > 0) {
+		console.log(
+			`  ${r.extensao.dias} dias reamostrados dos reais de ${r.extensao.de} a ${r.extensao.ate}` +
+				` (prisma/seed-extensao.ts).`
+		);
+	}
 	console.log(`  Admin: admin@empresa1.com`);
 	if (r.rh) console.log(`  Caso RH (admin + bate ponto): ${r.rh}`);
 	console.log(`  Senha padrão para todos: Senha123`);
