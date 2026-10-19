@@ -71,3 +71,11 @@ export function isToday(date: Date | string): boolean {
 		d.getDate() === now.getDate()
 	);
 }
+
+/**
+ * Maiúscula só na primeira letra: "sábado, 17 de outubro" → "Sábado, 17 de outubro".
+ * O `text-transform: capitalize` do CSS punha em toda palavra ("17 De Outubro").
+ */
+export function capitalizar(texto: string): string {
+	return texto.charAt(0).toUpperCase() + texto.slice(1);
+}

@@ -37,8 +37,8 @@ export interface DiaDetalhe {
 	/** "HH:MM". */
 	previstas: string[];
 	marcacoes: { hora: string; incluida: boolean }[];
-	/** A única marcação do dia é a saída (entrada esquecida). */
-	soSaida: boolean;
+	/** Posição prevista da 1ª marcação: maior que 0 quando a entrada foi esquecida. */
+	posicaoInicial: number;
 	desvios: DesviosDia;
 	ajuste: boolean;
 	realizadoMin: number;

@@ -88,7 +88,17 @@
 		}
 	]);
 
-	const navGrupos = $derived($isAdmin ? navAdmin : NAV_COLAB);
+	/**
+	 * Admin que também bate ponto (o RH com vínculo de colaborador): as rotas
+	 * `/colaborador/*` já o aceitam, mas sem o grupo no menu só se chegava pela URL.
+	 */
+	const navGrupos = $derived(
+		$isAdmin
+			? $user?.colaboradorId
+				? [...navAdmin, { ...NAV_COLAB[0], titulo: 'Meu ponto' }]
+				: navAdmin
+			: NAV_COLAB
+	);
 	/** Lista plana para a navegação compacta do mobile, que não tem cabeçalho. */
 	const navItems = $derived(navGrupos.flatMap((g) => g.itens));
 

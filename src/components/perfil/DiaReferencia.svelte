@@ -20,7 +20,7 @@
 	const rotulos = $derived(
 		meioPeriodo ? ['Entrada', 'Saída'] : ['Entrada', 'Saída intervalo', 'Volta intervalo', 'Saída']
 	);
-	const extras = $derived(Math.max(0, d.marcacoes.length - rotulos.length));
+	const extras = $derived(Math.max(0, d.marcacoes.length + d.posicaoInicial - rotulos.length));
 
 	interface Bloco {
 		rotulo: string;
@@ -33,8 +33,8 @@
 	const blocos = $derived<Bloco[]>(
 		rotulos.map((rotulo, i) => {
 			const ultimo = i === rotulos.length - 1;
-			// Só a saída batida: ela vai para o último bloco, os outros ficam vazios.
-			const m = d.soSaida ? (ultimo ? d.marcacoes[0] : null) : (d.marcacoes[i] ?? null);
+			// Entrada esquecida: as marcações começam na posição em que caem.
+			const m = d.marcacoes[i - d.posicaoInicial] ?? null;
 			const previsto = d.previstas[i] ?? null;
 			const base = { rotulo, hora: m?.hora ?? null, incluida: m?.incluida ?? false };
 
@@ -57,7 +57,11 @@
 					destaque: d.desvios.intervaloCurto ? 'curto' : null
 				};
 			if (ultimo && extras > 0)
-				return { ...base, detalhe: `+${extras} marcações no dia`, destaque: null };
+				return {
+					...base,
+					detalhe: `+${extras} ${extras === 1 ? 'marcação' : 'marcações'} no dia`,
+					destaque: null
+				};
 			return { ...base, detalhe: previsto ? `Previsto ${previsto}` : '', destaque: null };
 		})
 	);

@@ -8,7 +8,7 @@
 	import { onMount } from 'svelte';
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { DailySummary, RegistroType } from '@/services/timesheet.service';
-	import { formatTime, formatHoursMinutes, toDateKey } from '@/utils/date';
+	import { formatTime, formatHoursMinutes, toDateKey, capitalizar } from '@/utils/date';
 	import { descreverLocalizacao } from '@/utils/geolocalizacao';
 	import { SvelteDate } from 'svelte/reactivity';
 	import { baixar } from '@/services/api';
@@ -85,7 +85,9 @@
 
 	function formatDayHeader(dateStr: string): string {
 		const d = new Date(`${dateStr}T12:00:00`);
-		return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+		return capitalizar(
+			d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
+		);
 	}
 
 	// Espelho de ponto mensal em PDF (Portaria 671/2021, art. 84, parágrafo único).
@@ -387,7 +389,6 @@
 		font-weight: 700;
 		color: var(--color-text);
 		font-size: 0.9375rem;
-		text-transform: capitalize;
 	}
 
 	.day__sub {

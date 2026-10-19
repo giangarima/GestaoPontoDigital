@@ -36,13 +36,10 @@
 	function celulas(d: DiaDetalhe): Celula[] {
 		const vazia: Celula = { hora: null, incluida: false, nota: '', tom: null };
 		const cols: Celula[] = [0, 1, 2, 3].map(() => ({ ...vazia }));
-		const posicoes = d.soSaida
-			? [3]
-			: d.previstas.length === 2 && d.marcacoes.length <= 2
-				? [0, 3]
-				: [0, 1, 2, 3];
+		const posicoes = d.previstas.length === 2 && d.marcacoes.length <= 2 ? [0, 3] : [0, 1, 2, 3];
+		// Entrada esquecida: as marcações começam na posição em que caem.
 		d.marcacoes.slice(0, 4).forEach((m, i) => {
-			const col = posicoes[i];
+			const col = posicoes[i + d.posicaoInicial];
 			if (col !== undefined)
 				cols[col] = { hora: m.hora, incluida: m.incluida, nota: '', tom: null };
 		});
@@ -56,8 +53,9 @@
 			for (const col of previstas)
 				if (!cols[col].hora) cols[col] = { ...cols[col], nota: 'faltando', tom: 'faltando' };
 		}
-		const extras = d.marcacoes.length - 4;
-		if (extras > 0) cols[3] = { ...cols[3], nota: `+${extras} marcações` };
+		const extras = d.marcacoes.length + d.posicaoInicial - 4;
+		if (extras > 0)
+			cols[3] = { ...cols[3], nota: `+${extras} ${extras === 1 ? 'marcação' : 'marcações'}` };
 		return cols;
 	}
 

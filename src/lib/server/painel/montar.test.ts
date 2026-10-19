@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ATRASO_MIN,
+	posicaoDaPrimeira,
 	MARGEM_FALTA_MIN,
 	alertaLocalizacao,
 	montarLinha,
@@ -127,6 +128,16 @@ describe('montarLinha — dia encerrado', () => {
 		expect(l.diferencaMin).toBeNull();
 		expect(l.atrasado).toBe(false);
 		expect(l.diaEmAberto).toBe(true);
+	});
+
+	it('três batidas sem a entrada: sem atraso de horas', () => {
+		const l = linha(
+			{ marcacoes: ['12:23', '13:53', '17:56'].map((h) => brt(`${TERCA}T${h}`)) },
+			TERCA,
+			'2026-03-04T09:00'
+		);
+		expect(l.diferencaMin).toBeNull();
+		expect(l.atrasado).toBe(false);
 	});
 
 	it('sem marcação em dia útil encerrado é falta provável', () => {
@@ -406,5 +417,29 @@ describe('resumirLinhas e ordenarLinhas', () => {
 			)
 		];
 		expect(ordenarLinhas(linhas).map((l) => l.nome)).toEqual(['Zeca', 'Bruno', 'Ana']);
+	});
+});
+
+describe('posicaoDaPrimeira', () => {
+	const previstas = ['08:00', '12:00', '13:00', '17:00'].map((h) => brt(`${TERCA}T${h}`));
+	const em = (horas: string[]) => horas.map((h) => brt(`${TERCA}T${h}`));
+
+	it('dia par ou completo: sempre 0', () => {
+		expect(posicaoDaPrimeira(em(['12:23', '17:56']), previstas)).toBe(0);
+		expect(posicaoDaPrimeira(em(['08:00', '12:00', '13:00', '17:00']), previstas)).toBe(0);
+	});
+
+	it('ímpar: a prevista mais próxima que ainda cabe', () => {
+		expect(posicaoDaPrimeira(em(['17:04']), previstas)).toBe(3);
+		expect(posicaoDaPrimeira(em(['12:05']), previstas)).toBe(1);
+		expect(posicaoDaPrimeira(em(['12:23', '13:53', '17:56']), previstas)).toBe(1);
+		expect(posicaoDaPrimeira(em(['09:30', '12:00', '13:00']), previstas)).toBe(0);
+	});
+
+	it('mais batidas que o previsto (meio período trabalhado inteiro): entrada ou não', () => {
+		const meio = ['09:30', '13:30'].map((h) => brt(`${SABADO}T${h}`));
+		const sab = (horas: string[]) => horas.map((h) => brt(`${SABADO}T${h}`));
+		expect(posicaoDaPrimeira(sab(['13:00', '14:30', '18:58']), meio)).toBe(1);
+		expect(posicaoDaPrimeira(sab(['09:40', '13:30', '15:00']), meio)).toBe(0);
 	});
 });

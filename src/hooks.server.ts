@@ -54,6 +54,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const { pathname } = event.url;
 
+	// Já autenticado não precisa da tela de login: a raiz manda para a área do papel.
+	// (Sem loop: um 401 da API apaga o cookie junto com o token do localStorage.)
+	if (pathname === '/auth/login' && decoded) {
+		throw redirect(303, '/');
+	}
+
 	// Rotas de página públicas e documentação
 	if (pathname.startsWith('/auth') || pathname.startsWith('/api-docs')) {
 		return resolve(event);

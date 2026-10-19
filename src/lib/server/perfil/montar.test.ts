@@ -108,6 +108,14 @@ describe('desviosDoDia', () => {
 		expect(desviosDoDia(em(['08:30']), previstas).atrasoEntrada).toBe(true);
 	});
 
+	it('três batidas sem a entrada (12:23, 13:53, 17:56): nem entrada nem volta atrasadas', () => {
+		const d = desviosDoDia(em(['12:23', '13:53', '17:56']), previstas);
+		expect(d).toMatchObject({ entradaMin: null, voltaMin: null, atrasoEntrada: false });
+		expect(d.voltaAtrasada).toBe(false);
+		// Esqueceu a saída: a entrada atrasada continua sendo atraso.
+		expect(desviosDoDia(em(['09:30', '12:00', '13:00']), previstas).atrasoEntrada).toBe(true);
+	});
+
 	it('dia pontual: tudo zero, nenhum alerta', () => {
 		expect(desviosDoDia(em(PADRAO), previstas)).toEqual({
 			entradaMin: 0,

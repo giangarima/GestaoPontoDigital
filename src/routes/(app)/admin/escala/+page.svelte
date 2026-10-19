@@ -12,7 +12,7 @@
 	import Button from '@/components/ui/Button.svelte';
 	import { departamentoService, type Departamento } from '@/services/departamento.service';
 	import { bancoHorasService } from '@/services/banco-horas.service';
-	import { formatHoursMinutes } from '@/utils/date';
+	import { capitalizar, formatHoursMinutes } from '@/utils/date';
 	import {
 		CICLOS_PADRAO,
 		escalaService,
@@ -64,7 +64,9 @@
 	}
 	function nomeDoMes(mes: string): string {
 		const [a, m] = mes.split('-').map(Number);
-		return new Date(a, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+		return capitalizar(
+			new Date(a, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+		);
 	}
 	function curta(dia: string): string {
 		const [, m, d] = dia.split('-');
@@ -526,7 +528,6 @@
 	.mes {
 		min-width: 9.5rem;
 		text-align: center;
-		text-transform: capitalize;
 	}
 
 	.filtros select,

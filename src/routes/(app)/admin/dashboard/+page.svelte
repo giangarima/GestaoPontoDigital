@@ -12,6 +12,7 @@
 <script lang="ts">
 	import { ROTULO_TIPO } from '@/services/feriado.service';
 	import { onMount } from 'svelte';
+	import { capitalizar } from '@/utils/date';
 	import { resolve } from '$app/paths';
 	import {
 		adminService,
@@ -63,14 +64,9 @@
 		});
 	}
 
-	function curta(dia: string): string {
-		const [, m, d] = dia.split('-');
-		return `${d}/${m}`;
-	}
-
 	let dataRef = $state(hojeISO());
 	const ehHoje = $derived(dataRef === hojeISO());
-	const dataPorExtenso = $derived(porExtenso(dataRef));
+	const dataPorExtenso = $derived(capitalizar(porExtenso(dataRef)));
 
 	// Uma requisição por vez: trocar de dia ou a atualização automática abortam a
 	// anterior. Sem isso uma resposta atrasada chega depois e sobrescreve a tela
@@ -456,7 +452,7 @@
 								class="vazio__btn vazio__btn--primario"
 								onclick={() => irPara(painel!.navegacao!.anterior!)}
 							>
-								Ver {porExtenso(painel.navegacao.anterior)}, {curta(painel.navegacao.anterior)}
+								Ver {porExtenso(painel.navegacao.anterior)}
 							</button>
 						{/if}
 						{#if painel.navegacao?.proximo}
@@ -465,7 +461,7 @@
 								class="vazio__btn"
 								onclick={() => irPara(painel!.navegacao!.proximo!)}
 							>
-								Ver {porExtenso(painel.navegacao.proximo)}, {curta(painel.navegacao.proximo)}
+								Ver {porExtenso(painel.navegacao.proximo)}
 							</button>
 						{/if}
 					</div>
@@ -821,7 +817,6 @@
 		font-size: 1.0625rem;
 		font-weight: 700;
 		color: var(--color-text);
-		text-transform: capitalize;
 	}
 
 	.barra-dia__status {
@@ -1103,7 +1098,6 @@
 		font-size: 0.875rem;
 		font-weight: 600;
 		cursor: pointer;
-		text-transform: capitalize;
 	}
 
 	.vazio__btn--primario {

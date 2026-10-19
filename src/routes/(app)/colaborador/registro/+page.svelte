@@ -9,7 +9,7 @@
 	import Icon from '@/components/ui/Icon.svelte';
 	import { timesheetService } from '@/services/timesheet.service';
 	import type { RegistroType, DailySummary, ComprovanteItem } from '@/services/timesheet.service';
-	import { formatDate, formatTime, diffInMinutes } from '@/utils/date';
+	import { capitalizar, formatDate, formatTime, diffInMinutes } from '@/utils/date';
 	import { dataBrasiliaExtenso, horaBrasilia } from '@/utils/relogio';
 	import { descreverLocalizacao, obterPosicao } from '@/utils/geolocalizacao';
 
@@ -177,7 +177,7 @@
 
 <section class="registro">
 	<div class="clock">
-		<span class="clock__date">{dataBrasiliaExtenso(now)}</span>
+		<span class="clock__date">{capitalizar(dataBrasiliaExtenso(now))}</span>
 		<span class="clock__time">{horaBrasilia(now)}</span>
 		{#if totalMinutes > 0}
 			<span class="clock__worked">
@@ -331,7 +331,6 @@
 	.clock__date {
 		color: var(--color-sidebar-fg-muted);
 		font-size: 0.8125rem;
-		text-transform: capitalize;
 	}
 
 	.clock__time {

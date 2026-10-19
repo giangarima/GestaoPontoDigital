@@ -36,16 +36,27 @@ export const ATRASO_MIN = 5;
 export const MARGEM_FALTA_MIN = 60;
 
 /**
- * Batida única mais perto da última prevista que da primeira: é a saída de quem
- * esqueceu a entrada, não uma entrada com horas de atraso. Medir o atraso dela
- * contra a entrada prevista acusava "+9h34" por uma batida às 19:04.
+ * Em que posição prevista cai a 1ª marcação de um dia com batida faltando
+ * (número ímpar): a prevista mais próxima dela entre as que ainda deixam lugar
+ * para as seguintes. Maior que 0 = a entrada foi esquecida — a
+ * 1ª batida é uma saída ou uma volta, não uma entrada com horas de atraso. Medir
+ * contra a entrada prevista acusava "+3h53" por um 12:23, 13:53, 17:56.
+ *
+ * Dia com número par fica em 0: os pares se formam pela ordem.
  */
-export function batidaUnicaDeSaida(validas: Date[], previstas: Date[] | null): boolean {
-	if (validas.length !== 1 || !previstas || previstas.length < 2) return false;
+export function posicaoDaPrimeira(validas: Date[], previstas: Date[] | null): number {
+	const n = validas.length;
+	if (n % 2 === 0 || !previstas || previstas.length < 2) return 0;
+	// Mais batidas que o previsto (sábado de meio período trabalhado inteiro): só
+	// dá para dizer se a 1ª é a entrada ou não, então a busca para na 2ª prevista.
+	const ultima = n < previstas.length ? previstas.length - n : 1;
 	const t = validas[0].getTime();
-	return (
-		Math.abs(t - previstas[previstas.length - 1].getTime()) < Math.abs(t - previstas[0].getTime())
-	);
+	let melhor = 0;
+	for (let k = 1; k <= ultima; k++) {
+		if (Math.abs(t - previstas[k].getTime()) < Math.abs(t - previstas[melhor].getTime()))
+			melhor = k;
+	}
+	return melhor;
 }
 
 /** Até esta duração o dia é considerado meio período, para o rótulo de turno. */
@@ -249,8 +260,8 @@ export function montarLinha(
 	const previstoMin = previstas ? minutosDoDia(previstas[0]) : null;
 	let diferencaMin: number | null = null;
 	if (previstoMin !== null && n > 0) {
-		// Batida única perto da saída: sem entrada, não há atraso a medir.
-		if (!batidaUnicaDeSaida(validas, previstas))
+		// Entrada esquecida: a 1ª batida é outra, não há atraso de entrada a medir.
+		if (posicaoDaPrimeira(validas, previstas) === 0)
 			diferencaMin = minutosDoDia(validas[0]) - previstoMin;
 	} else if (previstoMin !== null && ehHoje) {
 		// Ainda sem bater: a diferença é o tempo já decorrido desde a hora prevista.
