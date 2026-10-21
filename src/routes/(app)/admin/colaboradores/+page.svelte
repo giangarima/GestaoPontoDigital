@@ -421,7 +421,8 @@
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	.th-acoes {
+	/* Mais específico que `.tabela th` (text-align: left): os botões ficam à direita. */
+	.tabela th.th-acoes {
 		text-align: right;
 	}
 

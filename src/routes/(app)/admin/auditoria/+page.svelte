@@ -225,7 +225,7 @@
 								<th>Marcação</th>
 								<th>Hash</th>
 								<th>Hash anterior</th>
-								<th>Elo</th>
+								<th class="th-elo">Elo</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -406,6 +406,10 @@
 
 	.elo {
 		font-weight: 700;
+		text-align: center;
+	}
+
+	th.th-elo {
 		text-align: center;
 	}
 

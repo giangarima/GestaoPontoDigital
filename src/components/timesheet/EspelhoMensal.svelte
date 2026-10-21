@@ -2,8 +2,10 @@
   @component EspelhoMensal
   @description Grid mensal de batidas para um colaborador.
 
-  Cada linha = um dia do mês. Colunas = as batidas na ordem (Entrada 1, Saída 1, …; quantas o
-  dia mais cheio pedir) e o Total — a posição, não o `type` gravado, como na apuração.
+  Cada linha = um dia do mês. Colunas = Entrada 1, Saída 1, … (quantas o dia mais cheio pedir)
+  e o Total; a batida vai para a coluna do rótulo quando ele é coerente, senão pela posição
+  (`colunasDoDia`). No modo leitura, a tabela do colaborador mostra só o que ele bateu, sem
+  sinal do tratamento do admin, que fica na tabela ao lado.
   Por padrão é somente leitura (espelho). Com `editavel`, vira ferramenta de ajuste:
   click em célula vazia → registrar batida manual; click em batida → ajustar/anular
   (Portaria 671: a original nunca é editada — ajustar cria a corrigida vinculada).
@@ -27,6 +29,7 @@
 	import {
 		celulasComAjustes,
 		celulasOriginais,
+		colunasDoDia,
 		rotuloColuna,
 		totalDeColunas,
 		type Celula
@@ -221,13 +224,16 @@
 {:else if erro}
 	<div class="erro">{erro}</div>
 {:else if espelho}
-	{#snippet batida(registro: RegistroRecord, interativo: boolean)}
+	<!-- `tratamento = false`: lado do colaborador, a batida como ele a fez, sem sinal do admin. -->
+	{#snippet batida(registro: RegistroRecord, interativo: boolean, tratamento: boolean)}
 		{@const revertivel = interativo && anulacaoAvulsa(registro)}
-		{@const titulo = registro.anulacao
-			? revertivel
-				? `Anulada: ${registro.anulacao.motivo} — clique para reverter`
-				: `Ajustada/anulada: ${registro.anulacao.motivo}`
-			: (registro.createdReason ?? (interativo ? 'Clique para ajustar' : 'Ponto válido'))}
+		{@const titulo = !tratamento
+			? 'Marcação do colaborador'
+			: registro.anulacao
+				? revertivel
+					? `Anulada: ${registro.anulacao.motivo} — clique para reverter`
+					: `Ajustada/anulada: ${registro.anulacao.motivo}`
+				: (registro.createdReason ?? (interativo ? 'Clique para ajustar' : 'Ponto válido'))}
 		{#if interativo}
 			<button
 				type="button"
@@ -244,8 +250,8 @@
 		{:else}
 			<span
 				class="batida batida--leitura"
-				class:batida--manual={!!registro.createdBy}
-				class:batida--anulada={!!registro.anulacao}
+				class:batida--manual={tratamento && !!registro.createdBy}
+				class:batida--anulada={tratamento && !!registro.anulacao}
 				title={titulo}
 			>
 				{formatHora(registro.timestamp)}
@@ -276,20 +282,14 @@
 		titulo: string,
 		celulas: Celulas,
 		totalDoDia: (s: EspelhoDia | null) => number,
-		totais: { horas: number; extras: number; deficit: number },
-		interativo: boolean
+		interativo: boolean,
+		tratamento: boolean
 	)}
 		{@const colunas = totalDeColunas(
 			Math.max(0, ...diasVisiveis.map((d) => celulas(d.summary).length))
 		)}
 		<div class="tabela">
 			<h3 class="tabela-titulo">{titulo}</h3>
-			<div class="totais">
-				<span><strong>{totais.horas}h</strong> trabalhadas</span>
-				<span class="extra"><strong>{totais.extras}h</strong> extras</span>
-				<span class="deficit"><strong>{totais.deficit}h</strong> déficit</span>
-				{#if soAjustados}<span class="totais__escopo">(mês inteiro)</span>{/if}
-			</div>
 
 			<div class="grid-wrap">
 				<table class="grid">
@@ -302,7 +302,7 @@
 					</thead>
 					<tbody>
 						{#each diasVisiveis as dia (dia.date)}
-							{@const ajustado = ajustadoNoDia(dia.summary)}
+							{@const ajustado = tratamento && ajustadoNoDia(dia.summary)}
 							{@const doDia = celulas(dia.summary)}
 							<tr class:fim-semana={dia.isFimSemana || (dia.feriado && !dia.feriado.escalado)}>
 								<td class="dia">
@@ -325,13 +325,17 @@
 									{/if}
 								</td>
 								{#each { length: colunas }, i (i)}
-									{@const celula = doDia[i]}
+									{@const celula = colunasDoDia(doDia, colunas)[i]}
 									<td class="cel">
 										{#if celula}
 											{#each celula.anuladas as anul (anul.id)}
-												{@render batida(anul, interativo)}
+												{@render batida(anul, interativo, tratamento)}
 											{/each}
-											{#if celula.valida}{@render batida(celula.valida, interativo)}{/if}
+											{#if celula.valida}{@render batida(
+													celula.valida,
+													interativo,
+													tratamento
+												)}{/if}
 										{:else if interativo}
 											<button
 												type="button"
@@ -379,39 +383,25 @@
 				{/if}
 			</button>
 		</div>
-
-		<div class="como-ler" aria-label="Como ler o espelho">
-			<span class="como-ler__titulo">Como ler</span>
-			<span class="como-ler__item">
-				<span class="batida batida--amostra">08:02</span> Registro do colaborador
-			</span>
-			<span class="como-ler__item">
-				<span class="batida batida--amostra batida--manual">08:00</span> Incluída ou corrigida pelo admin
-			</span>
-			<span class="como-ler__item">
-				<span class="batida batida--amostra batida--anulada">08:15</span> Desconsiderada pelo admin
-			</span>
-			<span class="como-ler__dica">Passe o mouse sobre uma batida para ver o motivo.</span>
-		</div>
 	</div>
 
 	{#if editavel}
-		{@render tabela('Marcações', celulasDoDia, (s) => s?.totalHours ?? 0, espelho.totais, true)}
+		{@render tabela('Marcações', celulasDoDia, (s) => s?.totalHours ?? 0, true, true)}
 	{:else}
 		<div class="comparacao">
 			{@render tabela(
 				'Marcações do colaborador',
 				originaisDoDia,
 				(s) => s?.original.totalHours ?? 0,
-				espelho.totais.original,
+				false,
 				false
 			)}
 			{@render tabela(
 				'Com ajustes do administrador',
 				celulasDoDia,
 				(s) => s?.totalHours ?? 0,
-				espelho.totais,
-				false
+				false,
+				true
 			)}
 		</div>
 	{/if}
@@ -485,26 +475,6 @@
 		}
 	}
 
-	.totais {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.75rem 1.5rem;
-		padding: 1rem;
-		background: var(--color-surface-muted);
-		border-radius: 0.5rem;
-		margin-bottom: 1rem;
-		color: var(--color-text-secondary);
-	}
-	.totais .extra {
-		color: var(--color-success);
-	}
-	.totais .deficit {
-		color: var(--color-danger);
-	}
-	.totais__escopo {
-		color: var(--color-text-subtle);
-	}
-
 	.barra {
 		display: flex;
 		flex-wrap: wrap;
@@ -546,36 +516,6 @@
 	.chip__n {
 		font-variant-numeric: tabular-nums;
 		opacity: 0.7;
-	}
-
-	.como-ler {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.5rem 1rem;
-		font-size: 0.8125rem;
-		color: var(--color-text-muted);
-	}
-	.como-ler__titulo {
-		font-weight: 700;
-		color: var(--color-text-secondary);
-	}
-	.como-ler__item {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-	}
-	.como-ler__dica {
-		flex-basis: 100%;
-		font-size: 0.75rem;
-		color: var(--color-text-subtle);
-	}
-	/* Amostra da legenda: a mesma célula da tabela, menor e sem interação. */
-	.batida.batida--amostra {
-		width: auto;
-		padding: 0.125rem 0.375rem;
-		font-size: 0.75rem;
-		cursor: default;
 	}
 
 	.dia-ajustado {

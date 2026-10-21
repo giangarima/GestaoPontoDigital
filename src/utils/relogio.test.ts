@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { dataBrasiliaExtenso, desvioDoServidor, horaBrasilia } from './relogio';
+import {
+	dataBrasiliaExtenso,
+	desvioDoServidor,
+	diaEHoraBrasilia,
+	horaBrasilia,
+	instanteBrasilia
+} from './relogio';
 
 describe('desvioDoServidor', () => {
 	it('dispositivo 5 s adiantado, 200 ms de ida e volta → −5000', () => {
@@ -25,5 +31,16 @@ describe('horário de Brasília independente do fuso do dispositivo', () => {
 
 	it('data por extenso do dia de Brasília', () => {
 		expect(dataBrasiliaExtenso(instante)).toBe('segunda-feira, 05 de janeiro de 2026');
+	});
+});
+
+describe('dia e hora de Brasília', () => {
+	it('separa e remonta o instante, qualquer que seja o fuso do dispositivo', () => {
+		// 01:30 UTC de 02/09 ainda é 01/09 em Brasília.
+		expect(diaEHoraBrasilia('2026-09-02T01:30:00.000Z')).toEqual({
+			dia: '2026-09-01',
+			hora: '22:30'
+		});
+		expect(instanteBrasilia('2026-09-01', '22:30').toISOString()).toBe('2026-09-02T01:30:00.000Z');
 	});
 });

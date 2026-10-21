@@ -6,9 +6,12 @@
   vinculadas (POST .../ajustar). Ação secundária "Anular":
   apenas invalida a batida (POST .../anular), para casos como clique duplicado.
   Conformidade Portaria 671: a batida original nunca é alterada nem removida.
+  Só o horário é editável: o dia é o da batida (Brasília), escolhido na grade.
 -->
 <script lang="ts">
 	import type { RegistroRecord, RegistroType } from '@/services/timesheet.service';
+	import { capitalizar } from '@/utils/date';
+	import { dataBrasiliaExtenso, diaEHoraBrasilia, instanteBrasilia } from '@/utils/relogio';
 
 	interface Props {
 		aberto: boolean;
@@ -28,22 +31,16 @@
 	};
 
 	let tipo = $state<RegistroType>('entrada');
-	let dataHora = $state('');
+	let dia = $state('');
+	let hora = $state('');
 	let motivo = $state('');
 	let salvando = $state(false);
 	let erro = $state('');
 
-	/** Converte ISO para o formato aceito pelo datetime-local (horário local). */
-	function isoParaLocal(iso: string): string {
-		const d = new Date(iso);
-		const off = d.getTimezoneOffset();
-		return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 16);
-	}
-
 	$effect(() => {
 		if (aberto && registro) {
 			tipo = registro.type;
-			dataHora = isoParaLocal(registro.timestamp);
+			({ dia, hora } = diaEHoraBrasilia(registro.timestamp));
 			motivo = '';
 			erro = '';
 		}
@@ -56,17 +53,17 @@
 			erro = 'Informe um motivo com ao menos 5 caracteres.';
 			return null;
 		}
-		if (!dataHora) {
-			erro = 'Informe data e hora.';
+		if (!hora) {
+			erro = 'Informe o horário.';
 			return null;
 		}
-		const ts = new Date(dataHora);
+		const ts = instanteBrasilia(dia, hora);
 		if (isNaN(ts.getTime())) {
-			erro = 'Data/hora inválida.';
+			erro = 'Horário inválido.';
 			return null;
 		}
 		if (ts.getTime() > Date.now()) {
-			erro = 'Não é possível registrar ponto em data futura.';
+			erro = 'Não é possível registrar ponto em horário futuro.';
 			return null;
 		}
 		return { ts, motivoLimpo };
@@ -145,8 +142,13 @@
 					</div>
 
 					<div class="campo">
-						<label for="dataHora">Novo horário</label>
-						<input id="dataHora" type="datetime-local" bind:value={dataHora} required />
+						<label for="hora">Novo horário</label>
+						<input id="hora" type="time" bind:value={hora} required />
+						{#if dia}
+							<span class="campo__dia"
+								>{capitalizar(dataBrasiliaExtenso(instanteBrasilia(dia, '12:00')))}</span
+							>
+						{/if}
 					</div>
 
 					<div class="campo">
@@ -264,6 +266,11 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;
+	}
+	/* O dia é fixo (escolhido na grade ou no painel): só o horário se edita. */
+	.campo__dia {
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
 	}
 	label {
 		font-size: 0.875rem;

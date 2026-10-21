@@ -1,12 +1,11 @@
 <!--
   @page /admin/banco-horas
   @description Banco de horas (art. 59 da CLT): saldo do ciclo atual por
-  colaborador, o que venceu no ciclo anterior e o extrato dia a dia — onde se
-  lança a folga compensatória, que consome saldo.
+  colaborador e o extrato dia a dia — onde se lança a folga compensatória, que
+  consome saldo, e se consultam os ciclos anteriores.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import Badge from '@/components/ui/Badge.svelte';
 	import Button from '@/components/ui/Button.svelte';
 	import {
 		ROTULO_REGIME,
@@ -210,7 +209,6 @@
 						<th class="num">Débitos</th>
 						<th class="num">Folgas</th>
 						<th class="col-saldo">Saldo do ciclo</th>
-						<th>Ciclo anterior</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -228,32 +226,19 @@
 								{l.atual.folgaMin ? formatHoursMinutes(-l.atual.folgaMin) : '—'}
 							</td>
 							<td class="col-saldo">
-								<div class="barra" aria-hidden="true">
-									<span
-										class="barra__valor"
-										class:barra__valor--neg={l.atual.saldoMin < 0}
-										style:width="{(Math.abs(l.atual.saldoMin) / maxSaldo) * 50}%"
-									></span>
+								<!-- Valor e barra na mesma linha: o número fica na altura dos outros. -->
+								<div class="saldo-linha">
+									<strong class:pos={l.atual.saldoMin > 0} class:neg={l.atual.saldoMin < 0}>
+										{saldo(l.atual.saldoMin)}
+									</strong>
+									<div class="barra" aria-hidden="true">
+										<span
+											class="barra__valor"
+											class:barra__valor--neg={l.atual.saldoMin < 0}
+											style:width="{(Math.abs(l.atual.saldoMin) / maxSaldo) * 50}%"
+										></span>
+									</div>
 								</div>
-								<strong class:pos={l.atual.saldoMin > 0} class:neg={l.atual.saldoMin < 0}>
-									{saldo(l.atual.saldoMin)}
-								</strong>
-							</td>
-							<td>
-								{#if l.anterior?.resultado}
-									<Badge
-										variant={l.anterior.resultado === 'pagar'
-											? 'warning'
-											: l.anterior.resultado === 'descontar'
-												? 'danger'
-												: 'neutral'}
-									>
-										{ROTULO_RESULTADO[l.anterior.resultado]}
-										{l.anterior.resultadoMin ? formatHoursMinutes(l.anterior.resultadoMin) : ''}
-									</Badge>
-								{:else}
-									<span class="hint">—</span>
-								{/if}
 							</td>
 						</tr>
 					{/each}
@@ -527,8 +512,20 @@
 	}
 
 	.col-saldo strong {
+		flex: 0 0 6.5rem;
 		font-variant-numeric: tabular-nums;
 		font-size: 0.85rem;
+	}
+
+	.saldo-linha {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.saldo-linha .barra {
+		flex: 1;
+		margin-bottom: 0;
 	}
 
 	/* Barra centrada no zero: crédito para a direita, débito para a esquerda. */

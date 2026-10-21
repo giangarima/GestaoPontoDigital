@@ -729,6 +729,9 @@
 		letter-spacing: inherit;
 		cursor: pointer;
 		display: inline-flex;
+		/* Seta à esquerda: invisível até o hover, ela ainda ocupa espaço, e à direita
+		   afastava o título da borda em que os números se alinham. */
+		flex-direction: row-reverse;
 		align-items: center;
 		gap: 0.25rem;
 	}

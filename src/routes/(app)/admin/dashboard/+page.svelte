@@ -183,12 +183,21 @@
 		return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m} min`;
 	}
 
-	/** A coluna Diferença conta o que houve, não só o número. */
+	/** Atraso por extenso, para o resumo do card de atrasados. */
 	function diferencaDe(l: LinhaPainel): string {
 		if (l.diferencaMin === null) return '—';
 		if (l.entradaHora === null) return `${duracao(l.diferencaMin)} sem registro`;
 		if (l.diferencaMin === 0) return 'no horário';
 		return `${l.diferencaMin > 0 ? '+' : '−'}${duracao(l.diferencaMin)}`;
+	}
+
+	/** Atraso até este limite (minutos) é leve: horário em amarelo; acima, em vermelho. */
+	const ATRASO_LEVE_MAX = 10;
+
+	/** Tom do horário registrado: só quem atrasou ganha cor (atraso = mais de `ATRASO_MIN`). */
+	function tomDoHorario(l: LinhaPainel): 'leve' | 'grave' | null {
+		if (!l.atrasado || l.diferencaMin === null) return null;
+		return l.diferencaMin <= ATRASO_LEVE_MAX ? 'leve' : 'grave';
 	}
 
 	function iniciais(nome: string): string {
@@ -619,7 +628,6 @@
 							<span role="columnheader">Colaborador</span>
 							<span role="columnheader">Previsto</span>
 							<span role="columnheader">Registrado</span>
-							<span role="columnheader">Diferença</span>
 							<span role="columnheader">Situação</span>
 							<span role="columnheader"><span class="sr">Ações</span></span>
 						</div>
@@ -652,6 +660,7 @@
 
 							{#if aberto}
 								{#each g.linhas as l (l.colaboradorId)}
+									{@const tom = tomDoHorario(l)}
 									<div class="linha" role="row">
 										<span class="pessoa" role="cell">
 											<Avatar initials={iniciais(l.nome)} size={34} color={corAvatar(l.nome)} />
@@ -682,10 +691,13 @@
 											</span>
 										</span>
 										<span class="num" role="cell">{l.previstaEntrada ?? '—'}</span>
-										<span class="num" role="cell">{l.entradaHora ?? '—'}</span>
-										<span class="num dif" class:dif--ruim={l.atrasado} role="cell">
-											{diferencaDe(l)}
-										</span>
+										<span
+											class="num"
+											class:num--leve={tom === 'leve'}
+											class:num--grave={tom === 'grave'}
+											title={tom ? `Atraso de ${diferencaDe(l).replace('+', '')}` : undefined}
+											role="cell">{l.entradaHora ?? '—'}</span
+										>
 										<span role="cell">
 											<Badge variant={varianteDe(l)} dot>{rotuloDe(l)}</Badge>
 										</span>
@@ -920,7 +932,9 @@
 
 	.linha {
 		display: grid;
-		grid-template-columns: minmax(12rem, 2fr) 6rem 6rem 9rem 9rem auto;
+		/* Trilhas fixas (nada de auto): cada linha é uma grade própria, e uma coluna
+		   que crescesse com o conteúdo desalinharia as linhas do cabeçalho. */
+		grid-template-columns: minmax(12rem, 1fr) 6rem 6rem 10rem 9rem;
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.625rem 0;
@@ -1020,13 +1034,15 @@
 		color: var(--color-text);
 	}
 
-	.dif {
-		color: var(--color-text-muted);
+	/* Atraso leve (até 10 min) em amarelo; acima, em vermelho. O valor exato fica no title. */
+	.num--leve {
+		color: var(--color-warning);
+		font-weight: 700;
 	}
 
-	.dif--ruim {
+	.num--grave {
 		color: var(--color-danger);
-		font-weight: 600;
+		font-weight: 700;
 	}
 
 	.acao {
@@ -1112,10 +1128,10 @@
 		}
 
 		.linha {
-			grid-template-columns: minmax(10rem, 2fr) 5rem 5rem 8rem auto;
+			grid-template-columns: minmax(10rem, 1fr) 5rem 5rem 9rem;
 		}
 
-		.linha > :nth-child(5) {
+		.linha > :nth-child(4) {
 			display: none;
 		}
 	}
@@ -1134,12 +1150,11 @@
 		}
 
 		.linha {
-			grid-template-columns: 1fr auto;
+			grid-template-columns: 1fr 4rem 8rem;
 			row-gap: 0.25rem;
 		}
 
-		.linha > :nth-child(2),
-		.linha > :nth-child(3) {
+		.linha > :nth-child(2) {
 			display: none;
 		}
 	}
